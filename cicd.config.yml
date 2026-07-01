@@ -1,0 +1,36 @@
+repository:
+  default_branch: main
+
+local_environment:
+  example_file: .env.example
+  local_file: .notification.local.env
+  setup_command: cp .env.example .notification.local.env
+
+defaults:
+  preset: Debug-CICD
+  config_override: None
+
+github:
+  reusable_workflow: gma-org/gmad-gha-workflows/.github/workflows/ios.yaml@v1.3.0
+
+notifications:
+  webhook_env: TEAM_WEBHOOK_URL
+  provider_env: CICD_CHAT_PROVIDER
+  default_provider: teams
+
+required:
+  variables:
+    - CICD_PROJECT_FILE
+    - CICD_DEFAULT_SCHEME
+    - CICD_DEFAULT_CONFIGURATION
+    - CICD_TEST_DESTINATION
+    - FASTLANE_TEAM_ID
+    - FASTLANE_ITC_TEAM_ID
+    - FASTLANE_BUNDLE_IDENTIFIER
+    - MATCH_GIT_URL
+    - CICD_CHAT_PROVIDER
+  secrets:
+    - TEAM_WEBHOOK_URL
+    - MATCH_PASSWORD
+    - MATCH_GIT_BASIC_AUTHORIZATION
+    - APP_STORE_CONNECT_API_KEY

@@ -1,0 +1,11 @@
+{
+  "None": {},
+  "a: Feature A Enabled": {
+    "FEATURE_A_ENABLED": "true",
+    "FEATURE_B_ENABLED": "false"
+  },
+  "b: Feature A Enabled + Feature B Enabled": {
+    "FEATURE_A_ENABLED": "true",
+    "FEATURE_B_ENABLED": "true"
+  }
+}

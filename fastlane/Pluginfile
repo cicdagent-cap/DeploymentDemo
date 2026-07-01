@@ -1,0 +1,4 @@
+# Fastlane plugins
+# Managed by `fastlane add_plugin` — keep this file checked into source control.
+
+gem 'fastlane-plugin-firebase_app_distribution'

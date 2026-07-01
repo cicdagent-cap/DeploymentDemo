@@ -1,0 +1,108 @@
+name: __PIPELINE_NAME__
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: Select build type
+        type: choice
+        required: true
+        default: Debug-CICD
+        options:
+          - Debug-CICD
+          - Release-CICD
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cicd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby (only if Fastlane exists)
+        if: ${{ hashFiles('fastlane/Fastfile') != '' }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Install dependencies (Fastlane)
+        if: ${{ hashFiles('fastlane/Fastfile') != '' }}
+        run: bundle install
+
+      - name: Select Build Mode
+        id: mode
+        run: |
+          if [[ "${{ github.event.inputs.preset }}" == "Release-CICD" ]]; then
+            echo "mode=release" >> $GITHUB_OUTPUT
+          else
+            echo "mode=build" >> $GITHUB_OUTPUT
+          fi
+
+      # ✅ FASTLANE PATH
+      - name: Run Fastlane (if available)
+        if: ${{ hashFiles('fastlane/Fastfile') != '' }}
+        run: |
+          echo "Using Fastlane..."
+          bundle exec fastlane ios ${{ steps.mode.outputs.mode }}
+
+      # ✅ FALLBACK PATH (NO FASTLANE)
+      - name: Run xcodebuild (fallback)
+        if: ${{ hashFiles('fastlane/Fastfile') == '' }}
+        run: |
+          echo "Fastlane not found, using xcodebuild..."
+
+          PROJECT_FILE="${CICD_PROJECT_FILE:-CI_CD_Project.xcodeproj}"
+          SCHEME="${CICD_DEFAULT_SCHEME:-CI_CD_Project}"
+
+          if [[ "${{ steps.mode.outputs.mode }}" == "release" ]]; then
+            CONFIG="Release"
+          else
+            CONFIG="Debug"
+          fi
+
+          xcodebuild \
+            -project "$PROJECT_FILE" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -destination "generic/platform=iOS" \
+            clean build
+
+      # ✅ NOTIFICATION (OPTIONAL)
+      - name: Notify (Teams/Slack)
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          if [ -z "$TEAM_WEBHOOK_URL" ]; then
+            echo "No webhook configured"
+            exit 0
+          fi
+
+          if [ "$CICD_CHAT_PROVIDER" = "teams" ]; then
+            PAYLOAD=$(printf '{
+              "@type": "MessageCard",
+              "@context": "https://schema.org/extensions",
+              "title": "Build %s",
+              "text": "%s"
+            }' "$STATUS" "$RUN_URL")
+          else
+            PAYLOAD=$(printf '{"text":"Build %s - %s"}' "$STATUS" "$RUN_URL")
+          fi
+
+          curl -H "Content-Type: application/json" \
+               -d "$PAYLOAD" \
+               "$TEAM_WEBHOOK_URL"

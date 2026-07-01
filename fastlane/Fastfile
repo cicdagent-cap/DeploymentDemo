@@ -1,0 +1,109 @@
+default_platform(:ios)
+
+# ---------------------------------------------------------------------------
+# Helpers — all project/scheme resolution goes through these two methods so
+# every lane picks up the correct values regardless of project name.
+# Priority order:
+#   1. CICD_PROJECT_FILE / CICD_DEFAULT_SCHEME env vars (GitHub Variables)
+#   2. Auto-detected *.xcodeproj in repo root
+#   3. Derived from the detected project name
+# ---------------------------------------------------------------------------
+
+def resolved_project_file
+  env_val = ENV["CICD_PROJECT_FILE"]
+  return env_val if env_val && !env_val.strip.empty? && File.exist?(env_val)
+
+  # Fastlane CWD is fastlane/ — search repo root (parent) first, then CWD
+  root = File.expand_path("..", __dir__)
+  detected = Dir.glob(File.join(root, "*.xcodeproj")).first ||
+             Dir.glob("*.xcodeproj").first
+  UI.user_error!("No .xcodeproj found. Set CICD_PROJECT_FILE.") if detected.nil? || detected.empty?
+
+  detected
+end
+
+def resolved_scheme
+  env_val = ENV["CICD_DEFAULT_SCHEME"]
+  return env_val if env_val && !env_val.strip.empty?
+
+  File.basename(resolved_project_file, ".xcodeproj")
+end
+
+def resolved_config(default: "Debug")
+  val = ENV["CICD_DEFAULT_CONFIGURATION"]
+  (val && !val.strip.empty?) ? val : default
+end
+
+# ---------------------------------------------------------------------------
+
+platform :ios do
+
+  desc "Build app (CI) — no IPA packaging, no code signing"
+  lane :build do
+    build_app(
+      project:          resolved_project_file,
+      scheme:           resolved_scheme,
+      configuration:    resolved_config(default: "Debug"),
+      clean:            true,
+      skip_package_ipa: true,
+      skip_codesigning: true
+    )
+  end
+
+  desc "Run unit tests"
+  lane :test do
+    dest = ENV["CICD_TEST_DESTINATION"] || "platform=iOS Simulator,name=iPhone 15"
+
+    run_tests(
+      project:     resolved_project_file,
+      scheme:      resolved_scheme,
+      destination: dest
+    )
+  end
+
+  desc "Release build — sign with Match appstore profile and upload to TestFlight"
+  lane :release do
+    notes = ENV["RELEASE_NOTES"] || ""
+
+    match(type: "appstore", readonly: true)
+
+    build_app(
+      project:       resolved_project_file,
+      scheme:        resolved_scheme,
+      configuration: resolved_config(default: "Release"),
+      clean:         true
+    )
+
+    upload_to_testflight(
+      changelog:                          notes,
+      skip_waiting_for_build_processing:  true
+    )
+  end
+
+  desc "Ad-hoc build and distribute via Firebase App Distribution"
+  lane :firebase_distribute do
+    app_id = ENV["FIREBASE_APP_ID"]
+    UI.user_error!("FIREBASE_APP_ID must be set") if app_id.nil? || app_id.strip.empty?
+
+    groups = ENV["FIREBASE_GROUPS"] || "testers"
+    notes  = ENV["RELEASE_NOTES"] || "Build #{last_git_commit[:abbreviated_commit_hash]} on #{git_branch}"
+
+    match(type: "adhoc", readonly: true)
+
+    build_app(
+      project:       resolved_project_file,
+      scheme:        resolved_scheme,
+      configuration: resolved_config(default: "Debug"),
+      clean:         true,
+      export_method: "ad-hoc"
+    )
+
+    firebase_app_distribution(
+      app:                  app_id,
+      groups:               groups,
+      release_notes:        notes,
+      firebase_cli_token:   ENV["FIREBASE_CLI_TOKEN"]
+    )
+  end
+
+end

@@ -1,0 +1,18 @@
+# Local CI/CD secrets — never commit
+.notification.local.env
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+# Ruby
+.bundle/
+vendor/bundle/

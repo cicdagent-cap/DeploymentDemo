@@ -1,0 +1,25 @@
+# Fill this file when asking the CICD agent to trigger an existing workflow.
+# Do not store real webhook URLs, tokens, or secret values in this file.
+
+target:
+  # Default options:
+  # 1) https://github.com/gma-org/gmap-ios/actions/workflows/Core.yml
+  # 2) https://github.com/gma-org/gmap-ios/actions/workflows/DE.yml
+  # 3) Custom (replace with your input)
+  workflow_url: https://github.com/gma-org/gmap-ios/actions/workflows/Core.yml
+
+  # Default options:
+  # 1) staging-trunk
+  # 2) Custom (replace with your input)
+  branch_name: staging-trunk
+
+workflow_inputs:
+  preset: Debug-CICD-MTE
+  config_Override: None
+  Release_Notes: Demo build from CICD agent
+
+notification:
+  # Local runs read real values from .notification.local.env.
+  # GitHub Actions reads real values from repository Secrets/Variables.
+  provider: teams
+  webhook_secret_or_env_name: TEAM_WEBHOOK_URL
