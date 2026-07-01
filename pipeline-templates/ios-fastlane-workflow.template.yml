@@ -24,8 +24,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  notify-triggered:
+    runs-on: ubuntu-latest
+    env:
+      CICD_CHAT_PROVIDER: ${{ vars.CICD_CHAT_PROVIDER }}
+      TEAM_WEBHOOK_URL: ${{ secrets.TEAM_WEBHOOK_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Notify build triggered
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ./scripts/notify.sh triggered "$RUN_URL" "${{ github.ref_name }}"
+
   ios:
-    runs-on: macos-latest
+    needs: notify-triggered
+    runs-on: __RUNNER_LABEL__
+
+    env:
+      CICD_PROJECT_FILE: ${{ vars.CICD_PROJECT_FILE }}
+      CICD_DEFAULT_SCHEME: ${{ vars.CICD_DEFAULT_SCHEME }}
+      CICD_DEFAULT_CONFIGURATION: ${{ vars.CICD_DEFAULT_CONFIGURATION }}
+      CICD_TEST_DESTINATION: ${{ vars.CICD_TEST_DESTINATION }}
+      FASTLANE_TEAM_ID: ${{ secrets.FASTLANE_TEAM_ID }}
+      FASTLANE_ITC_TEAM_ID: ${{ secrets.FASTLANE_ITC_TEAM_ID }}
+      FASTLANE_BUNDLE_IDENTIFIER: ${{ vars.FASTLANE_BUNDLE_IDENTIFIER }}
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
 
     steps:
       - name: Checkout
@@ -45,27 +73,26 @@ jobs:
       - name: Select Build Mode
         id: mode
         run: |
-          if [[ "${{ github.event.inputs.preset }}" == "Release-CICD" ]]; then
+          PRESET="${{ github.event.inputs.preset || 'Debug-CICD' }}"
+          if [[ "$PRESET" == "Release-CICD" ]]; then
             echo "mode=release" >> $GITHUB_OUTPUT
           else
             echo "mode=build" >> $GITHUB_OUTPUT
           fi
 
-      # ✅ FASTLANE PATH
       - name: Run Fastlane (if available)
         if: ${{ hashFiles('fastlane/Fastfile') != '' }}
         run: |
           echo "Using Fastlane..."
           bundle exec fastlane ios ${{ steps.mode.outputs.mode }}
 
-      # ✅ FALLBACK PATH (NO FASTLANE)
       - name: Run xcodebuild (fallback)
         if: ${{ hashFiles('fastlane/Fastfile') == '' }}
         run: |
           echo "Fastlane not found, using xcodebuild..."
 
-          PROJECT_FILE="${CICD_PROJECT_FILE:-CI_CD_Project.xcodeproj}"
-          SCHEME="${CICD_DEFAULT_SCHEME:-CI_CD_Project}"
+          PROJECT_FILE="${CICD_PROJECT_FILE:-DeploymentDemo.xcodeproj}"
+          SCHEME="${CICD_DEFAULT_SCHEME:-DeploymentDemo}"
 
           if [[ "${{ steps.mode.outputs.mode }}" == "release" ]]; then
             CONFIG="Release"
@@ -80,29 +107,19 @@ jobs:
             -destination "generic/platform=iOS" \
             clean build
 
-      # ✅ NOTIFICATION (OPTIONAL)
-      - name: Notify (Teams/Slack)
-        if: always()
+  notify-completed:
+    runs-on: ubuntu-latest
+    needs: ios
+    if: always()
+    env:
+      CICD_CHAT_PROVIDER: ${{ vars.CICD_CHAT_PROVIDER }}
+      TEAM_WEBHOOK_URL: ${{ secrets.TEAM_WEBHOOK_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Notify build completed
         run: |
-          STATUS="${{ job.status }}"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          if [ -z "$TEAM_WEBHOOK_URL" ]; then
-            echo "No webhook configured"
-            exit 0
-          fi
-
-          if [ "$CICD_CHAT_PROVIDER" = "teams" ]; then
-            PAYLOAD=$(printf '{
-              "@type": "MessageCard",
-              "@context": "https://schema.org/extensions",
-              "title": "Build %s",
-              "text": "%s"
-            }' "$STATUS" "$RUN_URL")
-          else
-            PAYLOAD=$(printf '{"text":"Build %s - %s"}' "$STATUS" "$RUN_URL")
-          fi
-
-          curl -H "Content-Type: application/json" \
-               -d "$PAYLOAD" \
-               "$TEAM_WEBHOOK_URL"
+          STATUS="${{ needs.ios.result }}"
+          ./scripts/notify.sh "$STATUS" "$RUN_URL" "${{ github.ref_name }}"

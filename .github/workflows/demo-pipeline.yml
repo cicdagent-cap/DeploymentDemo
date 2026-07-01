@@ -33,7 +33,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  notify-triggered:
+    runs-on: ubuntu-latest
+    env:
+      CICD_CHAT_PROVIDER: ${{ vars.CICD_CHAT_PROVIDER }}
+      TEAM_WEBHOOK_URL: ${{ secrets.TEAM_WEBHOOK_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Notify build triggered
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ./scripts/notify.sh triggered "$RUN_URL" "${{ github.ref_name }}"
+
   ios:
+    needs: notify-triggered
     runs-on: mac-m4-xc26.2-eu
 
     env:
@@ -41,8 +56,6 @@ jobs:
       CICD_DEFAULT_SCHEME: ${{ vars.CICD_DEFAULT_SCHEME }}
       CICD_DEFAULT_CONFIGURATION: ${{ vars.CICD_DEFAULT_CONFIGURATION }}
       CICD_TEST_DESTINATION: ${{ vars.CICD_TEST_DESTINATION }}
-      CICD_CHAT_PROVIDER: ${{ vars.CICD_CHAT_PROVIDER }}
-      TEAM_WEBHOOK_URL: ${{ secrets.TEAM_WEBHOOK_URL }}
       FASTLANE_TEAM_ID: ${{ secrets.FASTLANE_TEAM_ID }}
       FASTLANE_ITC_TEAM_ID: ${{ secrets.FASTLANE_ITC_TEAM_ID }}
       FASTLANE_BUNDLE_IDENTIFIER: ${{ vars.FASTLANE_BUNDLE_IDENTIFIER }}
@@ -103,28 +116,19 @@ jobs:
             -destination "generic/platform=iOS" \
             clean build
 
-      - name: Notify (Teams/Slack)
-        if: always()
+  notify-completed:
+    runs-on: ubuntu-latest
+    needs: ios
+    if: always()
+    env:
+      CICD_CHAT_PROVIDER: ${{ vars.CICD_CHAT_PROVIDER }}
+      TEAM_WEBHOOK_URL: ${{ secrets.TEAM_WEBHOOK_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Notify build completed
         run: |
-          STATUS="${{ job.status }}"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          if [ -z "$TEAM_WEBHOOK_URL" ]; then
-            echo "No webhook configured"
-            exit 0
-          fi
-
-          if [ "$CICD_CHAT_PROVIDER" = "teams" ]; then
-            PAYLOAD=$(printf '{
-              "@type": "MessageCard",
-              "@context": "https://schema.org/extensions",
-              "title": "Build %s",
-              "text": "%s"
-            }' "$STATUS" "$RUN_URL")
-          else
-            PAYLOAD=$(printf '{"text":"Build %s - %s"}' "$STATUS" "$RUN_URL")
-          fi
-
-          curl -H "Content-Type: application/json" \
-               -d "$PAYLOAD" \
-               "$TEAM_WEBHOOK_URL"
+          STATUS="${{ needs.ios.result }}"
+          ./scripts/notify.sh "$STATUS" "$RUN_URL" "${{ github.ref_name }}"

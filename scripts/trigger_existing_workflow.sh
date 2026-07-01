@@ -86,33 +86,7 @@ if [ -n "$RUN_URL" ]; then
   echo
   echo "✅ Build triggered successfully"
   echo "Run URL: $RUN_URL"
-
-  # Best-effort notification at trigger time; completion is still handled by watcher.
-  ./scripts/notify.sh "triggered" "$RUN_URL" "$REF" || true
+  echo "📡 Notifications (triggered / completed / cancelled) are sent by the workflow."
 else
   echo "⚠️ Could not extract run URL"
 fi
-
-# Background monitor
-(
-  sleep 5
-
-  RUN_ID=$(echo "$RUN_URL" | grep -Eo '[0-9]+$')
-
-  if [ -z "$RUN_ID" ]; then
-    exit 0
-  fi
-
-  echo "🔍 Monitoring build..."
-
-  gh run watch "$RUN_ID" --repo "$REPO" --exit-status >/dev/null 2>&1 || true
-
-  STATUS=$(gh run view "$RUN_ID" --repo "$REPO" --json conclusion --jq '.conclusion')
-
-  echo "Build status: $STATUS"
-
-  ./scripts/notify.sh "$STATUS" "$RUN_URL" "$REF"
-
-) >/dev/null 2>&1 &
-
-echo "📡 Background monitoring started (team will be notified on completion)"

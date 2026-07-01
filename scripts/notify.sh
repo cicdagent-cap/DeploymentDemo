@@ -43,6 +43,9 @@ case "${STATUS}" in
   cancelled)
     READABLE_STATUS="⛔ Build Cancelled"
     ;;
+  skipped)
+    READABLE_STATUS="⏭️ Build Skipped"
+    ;;
   triggered)
     READABLE_STATUS="🚀 Build Triggered"
     ;;
