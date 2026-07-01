@@ -63,8 +63,16 @@ else
   TEXT_FIELD="Run URL: ${RUN_URL}"
 fi
 
+# Power Automate HTTP triggers expect plain JSON fields, not MessageCard.
+if [[ "${TEAM_WEBHOOK_URL}" == *"powerplatform.com"* ]] || [[ "${TEAM_WEBHOOK_URL}" == *"powerautomate"* ]]; then
+  CHAT_PROVIDER="powerautomate"
+fi
+
 if [ "${CHAT_PROVIDER}" = "slack" ]; then
   PAYLOAD=$(printf '{"text":"%s"}' "${MESSAGE}")
+elif [ "${CHAT_PROVIDER}" = "powerautomate" ]; then
+  PAYLOAD=$(printf '{"title":"%s","text":"%s","message":"%s","status":"%s","branch":"%s","runUrl":"%s"}' \
+    "${READABLE_STATUS}" "${TEXT_FIELD}" "${MESSAGE}" "${STATUS}" "${BRANCH}" "${RUN_URL}")
 elif [ "${CHAT_PROVIDER}" = "teams" ]; then
   PAYLOAD=$(printf '{"@type":"MessageCard","@context":"https://schema.org/extensions","summary":"%s","title":"%s","text":"%s"}' "${READABLE_STATUS}" "${READABLE_STATUS}" "${TEXT_FIELD}")
 else
