@@ -1,10 +1,8 @@
 name: Demo_Pipeline
 
+# Manual-only: push/pull_request auto-triggers removed so PRs do not queue the
+# private mac-m4 runner or fire notify jobs unintentionally.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       preset:

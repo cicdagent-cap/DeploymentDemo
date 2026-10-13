@@ -31,6 +31,17 @@ platform_detection:
     react_native_ios: macos-latest
   notes: Suggested runners are defaults. Discover or ask for project-specific labels; never silently replace an existing configured runner.
 
+# Optional toolchain knobs (project-specific values belong in cicd.env / GitHub Variables).
+# Kit stays generic; demos pin concrete hosted images after verifying actions/runner-images docs.
+toolchain:
+  runner_label_var: CICD_RUNNER_LABEL
+  xcode_path_var: CICD_XCODE_PATH
+  test_destination_var: CICD_TEST_DESTINATION
+  notes: >
+    Prefer an explicit hosted label (e.g. macos-15) over macos-latest when pinning Xcode.
+    Set CICD_XCODE_PATH to an installed app path from the image readme (e.g. /Applications/Xcode_26.2.app).
+    Set CICD_TEST_DESTINATION to a Simulator destination that exists on that image/runtime.
+
 github:
   pipeline_template: templates/mobile-ci-workflow.template.yml
   entry_reusable_template: templates/entry-reusable-workflow.template.yml

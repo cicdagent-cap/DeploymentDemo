@@ -1,4 +1,5 @@
 # Proposed first CI run request — build+test only, no distribution/notifications.
+# Hosted runner selection verified against actions/runner-images macos-15 readme.
 pipeline:
   name: iOS_Build_Test
   output_file: .github/workflows/ios-build-test.yml
@@ -6,10 +7,11 @@ pipeline:
 provider: github_actions
 platform:
   detection: ios
+  test_destination: platform=iOS Simulator,OS=26.2,name=iPhone 16
 environment: development
 build_configuration: Debug
 destination: artifacts-only
-runner_label: mac-m4-xc26.2-eu
+runner_label: macos-15
 signing:
   strategy: none
 capabilities:
@@ -19,6 +21,8 @@ capabilities:
 notifications:
   enabled: false
 github_actions:
-  runner_label: mac-m4-xc26.2-eu
+  runner_label: macos-15
+  xcode_path: /Applications/Xcode_26.2.app
+  test_destination: platform=iOS Simulator,OS=26.2,name=iPhone 16
   default_branch: main
   template: mobile-ci

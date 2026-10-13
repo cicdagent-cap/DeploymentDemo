@@ -6,9 +6,12 @@
 # distribution_enabled: false
 # notifications_enabled: false
 # unit_tests: true
+# runner_label: macos-15
+# xcode_path: /Applications/Xcode_26.2.app
 # structural_guarantee: build-test template embeds CICD_ALLOW_DISTRIBUTION=false and omits notify/upload jobs
 # Build + unit-test only. Structurally excludes archive/upload/distribution/notification jobs.
 # Generated when destination=artifacts-only and distribution capabilities are absent.
+# Runner / Xcode / simulator destination are placeholders — set per project via request + env config.
 name: iOS_Build_Test
 
 on:
@@ -52,11 +55,17 @@ jobs:
         env:
           CICD_PLATFORM: ${{ vars.CICD_PLATFORM }}
           CICD_BUILD_TARGET: ${{ vars.CICD_BUILD_TARGET }}
+          CICD_RUNNER_LABEL: ${{ vars.CICD_RUNNER_LABEL }}
         run: |
           chmod +x ./scripts/detect_project_platform.sh
           ./scripts/detect_project_platform.sh --format github
-          if [[ "$(grep '^runner=' "$GITHUB_OUTPUT" | tail -n1 | cut -d= -f2-)" == "macos-latest" ]]; then
-            echo "runner=mac-m4-xc26.2-eu" >> "$GITHUB_OUTPUT"
+          # Prefer GitHub Variable, else generation-time label, else keep detect output.
+          PREFERRED_RUNNER="${CICD_RUNNER_LABEL:-}"
+          if [[ -z "$PREFERRED_RUNNER" ]]; then
+            PREFERRED_RUNNER="macos-15"
+          fi
+          if [[ -n "$PREFERRED_RUNNER" ]]; then
+            echo "runner=${PREFERRED_RUNNER}" >> "$GITHUB_OUTPUT"
           fi
           if [[ -n "${{ vars.CICD_PROJECT_FILE }}" ]]; then
             echo "project_file=${{ vars.CICD_PROJECT_FILE }}" >> "$GITHUB_OUTPUT"
@@ -73,6 +82,7 @@ jobs:
       CICD_DEFAULT_SCHEME: ${{ needs.detect.outputs.default_scheme || vars.CICD_DEFAULT_SCHEME }}
       CICD_DEFAULT_CONFIGURATION: ${{ vars.CICD_DEFAULT_CONFIGURATION }}
       CICD_TEST_DESTINATION: ${{ vars.CICD_TEST_DESTINATION }}
+      CICD_XCODE_PATH: ${{ vars.CICD_XCODE_PATH }}
       FASTLANE_BUNDLE_IDENTIFIER: ${{ vars.FASTLANE_BUNDLE_IDENTIFIER }}
       # Intentionally no signing/distribution secrets in this workflow.
     steps:
@@ -90,6 +100,74 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Select Xcode (project-configurable)
+        if: ${{ needs.detect.outputs.platform == 'ios' || needs.detect.outputs.fastlane_platform == 'ios' }}
+        run: |
+          set -euo pipefail
+          XCODE_PATH="${CICD_XCODE_PATH:-}"
+          if [[ -z "$XCODE_PATH" ]]; then
+            XCODE_PATH="/Applications/Xcode_26.2.app"
+          fi
+          if [[ -z "$XCODE_PATH" ]]; then
+            echo "No CICD_XCODE_PATH / generation xcode_path — using active developer directory"
+            xcode-select -p
+            xcodebuild -version
+            exit 0
+          fi
+          if [[ ! -d "$XCODE_PATH" ]]; then
+            echo "Configured Xcode path missing: $XCODE_PATH" >&2
+            ls /Applications/Xcode*.app 2>/dev/null || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
+          echo "Selected Xcode: $XCODE_PATH"
+          xcodebuild -version
+
+      - name: Preflight — Xcode + simulators; select test destination
+        if: ${{ needs.detect.outputs.platform == 'ios' || needs.detect.outputs.fastlane_platform == 'ios' }}
+        id: preflight
+        run: |
+          set -euo pipefail
+          echo "=== xcodebuild -version ==="
+          xcodebuild -version
+          echo "=== xcode-select -p ==="
+          xcode-select -p
+          echo "=== Available iOS Simulator devices (destinations) ==="
+          xcrun simctl list devices available | tee /tmp/cicd-sims.txt || true
+          DEST_PREF="${CICD_TEST_DESTINATION:-}"
+          if [[ -z "$DEST_PREF" ]]; then
+            DEST_PREF="platform=iOS Simulator,OS=26.2,name=iPhone 16"
+          fi
+          if [[ -z "$DEST_PREF" ]]; then
+            DEST_PREF="platform=iOS Simulator,OS=26.2,name=iPhone 16"
+          fi
+          NAME="$(echo "$DEST_PREF" | sed -n 's/.*name=\([^,]*\).*/\1/p')"
+          OS="$(echo "$DEST_PREF" | sed -n 's/.*OS=\([^,]*\).*/\1/p')"
+          NAME="${NAME:-iPhone 16}"
+          OS="${OS:-26.2}"
+          SELECTED=""
+          if xcrun simctl list devices available | grep -E "^\s+${NAME} \(" | grep -q "(${OS}"; then
+            SELECTED="platform=iOS Simulator,OS=${OS},name=${NAME}"
+          elif xcrun simctl list devices available | grep -E "^\s+${NAME} \(" | head -n1 | grep -q .; then
+            FOUND_OS="$(xcrun simctl list devices available | grep -E "^\s+${NAME} \(" | head -n1 | sed -n 's/.*(\([0-9.]*\).*/\1/p')"
+            SELECTED="platform=iOS Simulator,OS=${FOUND_OS},name=${NAME}"
+            echo "Preferred OS=${OS} not listed for ${NAME}; using OS=${FOUND_OS}"
+          else
+            LINE="$(xcrun simctl list devices available | grep -E '^\s+iPhone ' | head -n1 || true)"
+            if [[ -n "$LINE" ]]; then
+              FB_NAME="$(echo "$LINE" | sed -E 's/^[[:space:]]+//; s/ \(.*//')"
+              FB_OS="$(echo "$LINE" | sed -n 's/.*(\([0-9.]*\).*/\1/p')"
+              SELECTED="platform=iOS Simulator,OS=${FB_OS},name=${FB_NAME}"
+              echo "Preferred device ${NAME} unavailable; falling back to ${SELECTED}"
+            else
+              SELECTED="generic/platform=iOS Simulator"
+              echo "No named iPhone simulator found; using generic Simulator destination"
+            fi
+          fi
+          echo "selected_destination=${SELECTED}" >> "$GITHUB_OUTPUT"
+          echo "CICD_TEST_DESTINATION=${SELECTED}" >> "$GITHUB_ENV"
+          echo "Selected test destination: ${SELECTED}"
 
       - name: Setup Ruby
         if: ${{ hashFiles('fastlane/Fastfile') != '' }}
@@ -134,8 +212,9 @@ jobs:
         run: |
           PROJECT_FILE="${CICD_PROJECT_FILE:-DeploymentDemo.xcodeproj}"
           SCHEME="${CICD_DEFAULT_SCHEME:-DeploymentDemo}"
+          DEST="${CICD_TEST_DESTINATION:-generic/platform=iOS Simulator}"
           xcodebuild -project "$PROJECT_FILE" -scheme "$SCHEME" -configuration Debug \
-            -destination "generic/platform=iOS Simulator" build CODE_SIGNING_ALLOWED=NO
+            -destination "$DEST" build CODE_SIGNING_ALLOWED=NO
 
       - name: Upload test/build reports only (no IPA/AAB distribution)
         if: always()
