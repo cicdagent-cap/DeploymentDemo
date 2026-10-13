@@ -15,15 +15,6 @@ on:
         options:
           - Debug-CICD
           - Release-CICD
-      config_Override:
-        description: Config override preset
-        type: choice
-        required: true
-        default: None
-        options:
-          - None
-          - 'a: Feature A Enabled'
-          - 'b: Feature A Enabled + Feature B Enabled'
 
 permissions:
   contents: read
@@ -47,15 +38,79 @@ jobs:
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           ./scripts/notify.sh triggered "$RUN_URL" "${{ github.ref_name }}"
 
-  ios:
+  detect:
     needs: notify-triggered
-    runs-on: mac-m4-xc26.2-eu
+    runs-on: ubuntu-latest
+    outputs:
+      platform: ${{ steps.detect.outputs.platform }}
+      runner: ${{ steps.detect.outputs.runner }}
+      fastlane_platform: ${{ steps.detect.outputs.fastlane_platform }}
+      build_target: ${{ steps.detect.outputs.build_target }}
+      gradle_dir: ${{ steps.detect.outputs.gradle_dir }}
+      gradle_task: ${{ steps.detect.outputs.gradle_task }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
+      - name: Detect project platform
+        id: detect
+        env:
+          CICD_PLATFORM: ${{ vars.CICD_PLATFORM }}
+          CICD_BUILD_TARGET: ${{ vars.CICD_BUILD_TARGET }}
+        run: |
+          chmod +x ./scripts/detect_project_platform.sh
+          if [[ -n "${CICD_PLATFORM:-}" && "${CICD_PLATFORM}" != "auto" ]]; then
+            echo "platform=${CICD_PLATFORM}" >> "$GITHUB_OUTPUT"
+            case "${CICD_PLATFORM}" in
+              ios) echo "runner=mac-m4-xc26.2-eu" >> "$GITHUB_OUTPUT"; echo "fastlane_platform=ios" >> "$GITHUB_OUTPUT" ;;
+              android) echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"; echo "fastlane_platform=android" >> "$GITHUB_OUTPUT"; echo "gradle_dir=android" >> "$GITHUB_OUTPUT"; echo "gradle_task=assembleDebug" >> "$GITHUB_OUTPUT" ;;
+              flutter)
+                TARGET="${CICD_BUILD_TARGET:-android}"
+                echo "build_target=${TARGET}" >> "$GITHUB_OUTPUT"
+                if [[ "$TARGET" == "ios" ]]; then
+                  echo "runner=mac-m4-xc26.2-eu" >> "$GITHUB_OUTPUT"
+                  echo "fastlane_platform=flutter_ios" >> "$GITHUB_OUTPUT"
+                else
+                  echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+                  echo "fastlane_platform=flutter_android" >> "$GITHUB_OUTPUT"
+                  echo "gradle_dir=android" >> "$GITHUB_OUTPUT"
+                  echo "gradle_task=assembleDebug" >> "$GITHUB_OUTPUT"
+                fi
+                ;;
+              react-native)
+                TARGET="${CICD_BUILD_TARGET:-android}"
+                echo "build_target=${TARGET}" >> "$GITHUB_OUTPUT"
+                if [[ "$TARGET" == "ios" ]]; then
+                  echo "runner=mac-m4-xc26.2-eu" >> "$GITHUB_OUTPUT"
+                  echo "fastlane_platform=react_native_ios" >> "$GITHUB_OUTPUT"
+                else
+                  echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+                  echo "fastlane_platform=react_native_android" >> "$GITHUB_OUTPUT"
+                  echo "gradle_dir=android" >> "$GITHUB_OUTPUT"
+                  echo "gradle_task=assembleDebug" >> "$GITHUB_OUTPUT"
+                fi
+                ;;
+            esac
+          else
+            ./scripts/detect_project_platform.sh --format github
+            if [[ "$(grep '^runner=' "$GITHUB_OUTPUT" | tail -n1 | cut -d= -f2-)" == "macos-latest" ]]; then
+              echo "runner=mac-m4-xc26.2-eu" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+  build:
+    needs: detect
+    runs-on: ${{ needs.detect.outputs.runner }}
     env:
+      CICD_PLATFORM: ${{ needs.detect.outputs.platform }}
+      CICD_BUILD_TARGET: ${{ needs.detect.outputs.build_target }}
       CICD_PROJECT_FILE: ${{ vars.CICD_PROJECT_FILE }}
       CICD_DEFAULT_SCHEME: ${{ vars.CICD_DEFAULT_SCHEME }}
       CICD_DEFAULT_CONFIGURATION: ${{ vars.CICD_DEFAULT_CONFIGURATION }}
       CICD_TEST_DESTINATION: ${{ vars.CICD_TEST_DESTINATION }}
+      CICD_GRADLE_DIR: ${{ needs.detect.outputs.gradle_dir }}
+      CICD_GRADLE_TASK: ${{ needs.detect.outputs.gradle_task }}
+      CICD_NODE_VERSION: ${{ vars.CICD_NODE_VERSION }}
       FASTLANE_TEAM_ID: ${{ secrets.FASTLANE_TEAM_ID }}
       FASTLANE_ITC_TEAM_ID: ${{ secrets.FASTLANE_ITC_TEAM_ID }}
       FASTLANE_BUNDLE_IDENTIFIER: ${{ vars.FASTLANE_BUNDLE_IDENTIFIER }}
@@ -63,52 +118,117 @@ jobs:
       MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
       MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
       APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Ruby (only if Fastlane exists)
+      - name: Setup Java
+        if: ${{ contains(fromJSON('["android","flutter","react-native"]'), needs.detect.outputs.platform) && needs.detect.outputs.build_target != 'ios' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        if: ${{ needs.detect.outputs.platform == 'flutter' }}
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Setup Node.js
+        if: ${{ needs.detect.outputs.platform == 'react-native' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ vars.CICD_NODE_VERSION || '20' }}
+          cache: npm
+
+      - name: Setup Ruby (Fastlane)
         if: ${{ hashFiles('fastlane/Fastfile') != '' }}
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
           bundler-cache: true
 
-      - name: Install dependencies (Fastlane)
+      - name: Install Ruby dependencies
         if: ${{ hashFiles('fastlane/Fastfile') != '' }}
         run: bundle install
 
-      - name: Select Build Mode
+      - name: Install Node dependencies
+        if: ${{ needs.detect.outputs.platform == 'react-native' && hashFiles('package-lock.json') != '' }}
+        run: npm ci
+
+      - name: Select build mode
         id: mode
         run: |
           PRESET="${{ github.event.inputs.preset || 'Debug-CICD' }}"
           if [[ "$PRESET" == "Release-CICD" ]]; then
-            echo "mode=release" >> $GITHUB_OUTPUT
+            echo "mode=release" >> "$GITHUB_OUTPUT"
           else
-            echo "mode=build" >> $GITHUB_OUTPUT
+            echo "mode=build" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run Fastlane (if available)
+      - name: Run Fastlane
         if: ${{ hashFiles('fastlane/Fastfile') != '' }}
         run: |
-          echo "Using Fastlane..."
-          bundle exec fastlane ios ${{ steps.mode.outputs.mode }}
+          PLATFORM="${{ needs.detect.outputs.fastlane_platform }}"
+          MODE="${{ steps.mode.outputs.mode }}"
+          case "$PLATFORM" in
+            ios)
+              bundle exec fastlane ios "$MODE"
+              ;;
+            android)
+              bundle exec fastlane android "$MODE"
+              ;;
+            flutter_android)
+              if [[ "$MODE" == "release" ]]; then
+                bundle exec fastlane flutter_release_android
+              else
+                bundle exec fastlane flutter_build_android
+              fi
+              ;;
+            flutter_ios)
+              if [[ "$MODE" == "release" ]]; then
+                bundle exec fastlane flutter_release_ios
+              else
+                bundle exec fastlane flutter_build_ios
+              fi
+              ;;
+            react_native_android)
+              if [[ "$MODE" == "release" ]]; then
+                bundle exec fastlane react_native_release_android
+              else
+                bundle exec fastlane react_native_build_android
+              fi
+              ;;
+            react_native_ios)
+              if [[ "$MODE" == "release" ]]; then
+                bundle exec fastlane react_native_release_ios
+              else
+                bundle exec fastlane react_native_build_ios
+              fi
+              ;;
+            *)
+              echo "Unsupported Fastlane platform: $PLATFORM"
+              exit 1
+              ;;
+          esac
 
-      - name: Run xcodebuild (fallback)
-        if: ${{ hashFiles('fastlane/Fastfile') == '' }}
+      - name: Build iOS (xcodebuild fallback)
+        if: ${{ needs.detect.outputs.platform == 'ios' && hashFiles('fastlane/Fastfile') == '' }}
         run: |
-          echo "Fastlane not found, using xcodebuild..."
-
           PROJECT_FILE="${CICD_PROJECT_FILE:-DeploymentDemo.xcodeproj}"
           SCHEME="${CICD_DEFAULT_SCHEME:-DeploymentDemo}"
-
           if [[ "${{ steps.mode.outputs.mode }}" == "release" ]]; then
             CONFIG="Release"
           else
             CONFIG="Debug"
           fi
-
           xcodebuild \
             -project "$PROJECT_FILE" \
             -scheme "$SCHEME" \
@@ -116,9 +236,53 @@ jobs:
             -destination "generic/platform=iOS" \
             clean build
 
+      - name: Build Android (Gradle fallback)
+        if: ${{ needs.detect.outputs.platform == 'android' && hashFiles('fastlane/Fastfile') == '' }}
+        run: |
+          GRADLE_DIR="${CICD_GRADLE_DIR:-android}"
+          TASK="${CICD_GRADLE_TASK:-assembleDebug}"
+          if [[ "$GRADLE_DIR" == "." ]]; then
+            ./gradlew "$TASK"
+          else
+            cd "$GRADLE_DIR"
+            chmod +x ./gradlew
+            ./gradlew "$TASK"
+          fi
+
+      - name: Build Flutter (fallback)
+        if: ${{ needs.detect.outputs.platform == 'flutter' && hashFiles('fastlane/Fastfile') == '' }}
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+          if [[ "${{ needs.detect.outputs.build_target }}" == "ios" ]]; then
+            flutter build ios --no-codesign
+          else
+            if [[ "${{ steps.mode.outputs.mode }}" == "release" ]]; then
+              flutter build appbundle --release
+            else
+              flutter build apk --debug
+            fi
+          fi
+
+      - name: Build React Native (fallback)
+        if: ${{ needs.detect.outputs.platform == 'react-native' && hashFiles('fastlane/Fastfile') == '' }}
+        run: |
+          if [[ "${{ needs.detect.outputs.build_target }}" == "ios" ]]; then
+            npx react-native build-ios --mode Debug
+          else
+            cd "${CICD_GRADLE_DIR:-android}"
+            chmod +x ./gradlew
+            if [[ "${{ steps.mode.outputs.mode }}" == "release" ]]; then
+              ./gradlew bundleRelease
+            else
+              ./gradlew assembleDebug
+            fi
+          fi
+
   notify-completed:
     runs-on: ubuntu-latest
-    needs: ios
+    needs: build
     if: always()
     env:
       CICD_CHAT_PROVIDER: ${{ vars.CICD_CHAT_PROVIDER }}
@@ -130,5 +294,5 @@ jobs:
       - name: Notify build completed
         run: |
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          STATUS="${{ needs.ios.result }}"
+          STATUS="${{ needs.build.result }}"
           ./scripts/notify.sh "$STATUS" "$RUN_URL" "${{ github.ref_name }}"

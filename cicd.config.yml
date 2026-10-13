@@ -9,9 +9,27 @@ local_environment:
 defaults:
   preset: Debug-CICD
   config_override: None
+  platform: auto
+  build_target: android
+
+platform_detection:
+  script: scripts/detect_project_platform.sh
+  supported:
+    - ios
+    - android
+    - flutter
+    - react-native
+  runners:
+    ios: macos-latest
+    android: ubuntu-latest
+    flutter_android: ubuntu-latest
+    flutter_ios: macos-latest
+    react_native_android: ubuntu-latest
+    react_native_ios: macos-latest
 
 github:
-  reusable_workflow: gma-org/gmad-gha-workflows/.github/workflows/ios.yaml@v1.3.0
+  pipeline_template: .github/pipeline-templates/mobile-ci-workflow.template.yml
+  legacy_ios_template: .github/pipeline-templates/ios-fastlane-workflow.template.yml
 
 notifications:
   webhook_env: TEAM_WEBHOOK_URL
@@ -19,18 +37,42 @@ notifications:
   default_provider: teams
 
 required:
-  variables:
-    - CICD_PROJECT_FILE
-    - CICD_DEFAULT_SCHEME
-    - CICD_DEFAULT_CONFIGURATION
-    - CICD_TEST_DESTINATION
-    - FASTLANE_TEAM_ID
-    - FASTLANE_ITC_TEAM_ID
-    - FASTLANE_BUNDLE_IDENTIFIER
-    - MATCH_GIT_URL
-    - CICD_CHAT_PROVIDER
-  secrets:
-    - TEAM_WEBHOOK_URL
-    - MATCH_PASSWORD
-    - MATCH_GIT_BASIC_AUTHORIZATION
-    - APP_STORE_CONNECT_API_KEY
+  common:
+    variables:
+      - CICD_PLATFORM
+      - CICD_CHAT_PROVIDER
+    secrets:
+      - TEAM_WEBHOOK_URL
+  ios:
+    variables:
+      - CICD_PROJECT_FILE
+      - CICD_DEFAULT_SCHEME
+      - CICD_DEFAULT_CONFIGURATION
+      - CICD_TEST_DESTINATION
+      - FASTLANE_BUNDLE_IDENTIFIER
+    secrets:
+      - FASTLANE_TEAM_ID
+      - FASTLANE_ITC_TEAM_ID
+      - MATCH_GIT_URL
+      - MATCH_PASSWORD
+      - MATCH_GIT_BASIC_AUTHORIZATION
+      - APP_STORE_CONNECT_API_KEY
+  android:
+    variables:
+      - CICD_GRADLE_DIR
+    secrets:
+      - ANDROID_KEYSTORE_BASE64
+      - ANDROID_KEYSTORE_PASSWORD
+      - ANDROID_KEY_ALIAS
+      - ANDROID_KEY_PASSWORD
+  flutter:
+    variables:
+      - CICD_BUILD_TARGET
+      - CICD_GRADLE_DIR
+    secrets: []
+  react-native:
+    variables:
+      - CICD_BUILD_TARGET
+      - CICD_NODE_VERSION
+      - CICD_GRADLE_DIR
+    secrets: []
