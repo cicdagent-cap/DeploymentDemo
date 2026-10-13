@@ -1,0 +1,287 @@
+# Multi-platform CI/CD Fastfile — iOS, Android, Flutter, React Native
+# Match and Firebase distribution are optional and gated by env flags.
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+def repo_root
+  File.expand_path("..", __dir__)
+end
+
+def resolved_gradle_dir
+  env_val = ENV["CICD_GRADLE_DIR"]
+  return env_val if env_val && !env_val.strip.empty?
+
+  android_dir = File.join(repo_root, "android")
+  File.directory?(android_dir) ? "android" : "."
+end
+
+def gradle_project_dir
+  dir = resolved_gradle_dir
+  dir == "." ? repo_root : File.join(repo_root, dir)
+end
+
+def resolved_project_file
+  env_val = ENV["CICD_PROJECT_FILE"]
+  if env_val && !env_val.strip.empty?
+    abs = File.expand_path(env_val, repo_root)
+    return env_val if File.exist?(abs) || File.exist?(env_val)
+  end
+
+  root = repo_root
+  workspaces = Dir.glob(File.join(root, "**", "*.xcworkspace")).reject { |p| p.include?(".xcodeproj/") || p.include?("/Pods/") }
+  projects = Dir.glob(File.join(root, "**", "*.xcodeproj")).reject { |p| p.include?("/Pods/") }
+  detected = workspaces.first || projects.first
+  UI.user_error!("No Xcode project/workspace found. Set CICD_PROJECT_FILE to a relative path.") if detected.nil?
+
+  detected.sub(%r{\A#{Regexp.escape(root)}/?}, "")
+end
+
+def project_is_workspace?(path)
+  path.end_with?(".xcworkspace")
+end
+
+def resolved_scheme
+  env_val = ENV["CICD_DEFAULT_SCHEME"]
+  return env_val if env_val && !env_val.strip.empty?
+
+  base = File.basename(resolved_project_file)
+  base.sub(/\.(xcodeproj|xcworkspace)$/, "")
+end
+
+def resolved_config(default: "Debug")
+  val = ENV["CICD_DEFAULT_CONFIGURATION"]
+  (val && !val.strip.empty?) ? val : default
+end
+
+def truthy?(val)
+  %w[1 true yes TRUE YES].include?(val.to_s.strip)
+end
+
+def run_gradle(task:)
+  Dir.chdir(gradle_project_dir) do
+    gradle(task: task)
+  end
+end
+
+def run_flutter(command)
+  Dir.chdir(repo_root) do
+    sh("flutter #{command}")
+  end
+end
+
+def run_npm(command)
+  Dir.chdir(repo_root) do
+    sh(command)
+  end
+end
+
+def ios_build_args(configuration:, skip_package_ipa: true, skip_codesigning: true, simulator: false)
+  path = resolved_project_file
+  args = {
+    scheme: resolved_scheme,
+    configuration: configuration,
+    clean: true,
+    skip_package_ipa: skip_package_ipa,
+    skip_codesigning: skip_codesigning
+  }
+  if project_is_workspace?(path)
+    args[:workspace] = path
+  else
+    args[:project] = path
+  end
+  if simulator
+    # Unsigned CI must target the Simulator SDK — not a device archive path.
+    args[:destination] = ENV["CICD_SIMULATOR_DESTINATION"] || "generic/platform=iOS Simulator"
+    args[:sdk] = "iphonesimulator"
+    args[:skip_archive] = true
+  end
+  args
+end
+
+default_platform(:ios)
+
+# ---------------------------------------------------------------------------
+# iOS
+# ---------------------------------------------------------------------------
+
+platform :ios do
+  desc "Build app (CI) — Simulator SDK, no IPA packaging, no code signing"
+  lane :build do
+    build_app(ios_build_args(configuration: resolved_config(default: "Debug"), simulator: true))
+  end
+
+  desc "Run unit tests on iOS Simulator"
+  lane :test do
+    dest = ENV["CICD_TEST_DESTINATION"] || "platform=iOS Simulator,name=iPhone 16"
+    path = resolved_project_file
+    args = {
+      scheme: resolved_scheme,
+      destination: dest
+    }
+    if project_is_workspace?(path)
+      args[:workspace] = path
+    else
+      args[:project] = path
+    end
+    run_tests(args)
+  end
+
+  desc "Release build — optional Match + optional TestFlight / Firebase"
+  lane :release do
+    notes = ENV["RELEASE_NOTES"] || ""
+    if truthy?(ENV["CICD_USE_MATCH"])
+      match(type: "appstore", readonly: true)
+    else
+      UI.important("CICD_USE_MATCH not enabled — using existing signing configuration (automatic or manual).")
+    end
+
+    build_app(ios_build_args(configuration: resolved_config(default: "Release"), skip_package_ipa: false, skip_codesigning: false))
+
+    if truthy?(ENV["CICD_UPLOAD_TESTFLIGHT"])
+      upload_to_testflight(
+        changelog: notes,
+        skip_waiting_for_build_processing: true
+      )
+      UI.important("TestFlight upload requested. Upload acceptance does not mean processing is complete or testers can install.")
+    else
+      UI.important("CICD_UPLOAD_TESTFLIGHT not enabled — IPA not uploaded to TestFlight.")
+    end
+
+    if truthy?(ENV["CICD_DISTRIBUTE_FIREBASE"])
+      firebase_distribute_ipa(notes: notes)
+    end
+  end
+end
+
+def firebase_distribute_ipa(notes:)
+  app_id = ENV["FIREBASE_APP_ID"]
+  UI.user_error!("FIREBASE_APP_ID required for Firebase distribution") if app_id.nil? || app_id.strip.empty?
+
+  unless ENV["GOOGLE_APPLICATION_CREDENTIALS"] && File.exist?(ENV["GOOGLE_APPLICATION_CREDENTIALS"])
+    if ENV["FIREBASE_CLI_TOKEN"] && !ENV["FIREBASE_CLI_TOKEN"].strip.empty?
+      UI.important("Using FIREBASE_CLI_TOKEN compatibility auth. Prefer service account / ADC (GOOGLE_APPLICATION_CREDENTIALS). Token auth is limited and may be deprecated by Firebase CLI.")
+    else
+      UI.user_error!("Set GOOGLE_APPLICATION_CREDENTIALS to a service-account JSON path (preferred), or FIREBASE_CLI_TOKEN for compatibility only.")
+    end
+  end
+
+  params = {
+    app: app_id,
+    groups: ENV["FIREBASE_GROUPS"] || "testers",
+    release_notes: notes
+  }
+  token = ENV["FIREBASE_CLI_TOKEN"]
+  params[:firebase_cli_token] = token if token && !token.strip.empty?
+  firebase_app_distribution(params)
+end
+
+# ---------------------------------------------------------------------------
+# Android
+# ---------------------------------------------------------------------------
+
+platform :android do
+  desc "Debug APK build"
+  lane :build do
+    run_gradle(task: "assembleDebug")
+  end
+
+  desc "Run unit tests"
+  lane :test do
+    run_gradle(task: "test")
+  end
+
+  desc "Release AAB build (optional Firebase / Google Play)"
+  lane :release do
+    run_gradle(task: "bundleRelease")
+    notes = ENV["RELEASE_NOTES"] || ""
+    if truthy?(ENV["CICD_DISTRIBUTE_FIREBASE"])
+      app_id = ENV["FIREBASE_APP_ID"]
+      UI.user_error!("FIREBASE_APP_ID required") if app_id.nil? || app_id.strip.empty?
+      unless ENV["GOOGLE_APPLICATION_CREDENTIALS"] && File.exist?(ENV["GOOGLE_APPLICATION_CREDENTIALS"])
+        UI.user_error!("Set GOOGLE_APPLICATION_CREDENTIALS for Firebase (preferred) or provide FIREBASE_CLI_TOKEN for compatibility only") unless ENV["FIREBASE_CLI_TOKEN"]
+      end
+      aab = Dir[File.join(gradle_project_dir, "app/build/outputs/bundle/**/*.aab")].max_by { |p| File.mtime(p) }
+      UI.user_error!("No AAB found to distribute") unless aab
+      params = { app: app_id, android_artifact_path: aab, groups: ENV["FIREBASE_GROUPS"] || "testers", release_notes: notes }
+      token = ENV["FIREBASE_CLI_TOKEN"]
+      params[:firebase_cli_token] = token if token && !token.strip.empty?
+      firebase_app_distribution(params)
+    end
+    if truthy?(ENV["CICD_DISTRIBUTE_GOOGLE_PLAY"])
+      aab = Dir[File.join(gradle_project_dir, "app/build/outputs/bundle/**/*.aab")].max_by { |p| File.mtime(p) }
+      UI.user_error!("No AAB found for Google Play upload") unless aab
+      track = ENV["GOOGLE_PLAY_TRACK"] || "internal"
+      supply(
+        aab: aab,
+        track: track,
+        json_key: ENV["GOOGLE_PLAY_JSON_KEY"] || ENV["GOOGLE_APPLICATION_CREDENTIALS"],
+        skip_upload_metadata: true,
+        skip_upload_images: true,
+        skip_upload_screenshots: true
+      )
+      UI.important("Google Play upload requested to track=#{track}. Acceptance does not mean rollout/testers are complete.")
+    end
+  end
+end
+
+# ---------------------------------------------------------------------------
+# Flutter
+# ---------------------------------------------------------------------------
+
+desc "Flutter CI build (Android)"
+lane :flutter_build_android do
+  run_flutter("pub get")
+  run_flutter("analyze")
+  run_flutter("test")
+  run_flutter("build apk --debug")
+end
+
+desc "Flutter release build (Android)"
+lane :flutter_release_android do
+  run_flutter("pub get")
+  run_flutter("build appbundle --release")
+end
+
+desc "Flutter CI build (iOS)"
+lane :flutter_build_ios do
+  run_flutter("pub get")
+  run_flutter("analyze")
+  run_flutter("test")
+  run_flutter("build ios --no-codesign")
+end
+
+desc "Flutter release build (iOS)"
+lane :flutter_release_ios do
+  run_flutter("pub get")
+  run_flutter("build ios --release --no-codesign")
+end
+
+# ---------------------------------------------------------------------------
+# React Native
+# ---------------------------------------------------------------------------
+
+desc "React Native CI build (Android)"
+lane :react_native_build_android do
+  run_npm("npm ci") if File.exist?(File.join(repo_root, "package-lock.json"))
+  run_gradle(task: "assembleDebug")
+end
+
+desc "React Native release build (Android)"
+lane :react_native_release_android do
+  run_npm("npm ci") if File.exist?(File.join(repo_root, "package-lock.json"))
+  run_gradle(task: "bundleRelease")
+end
+
+desc "React Native CI build (iOS)"
+lane :react_native_build_ios do
+  run_npm("npm ci") if File.exist?(File.join(repo_root, "package-lock.json"))
+  run_npm("npx react-native build-ios --mode Debug")
+end
+
+desc "React Native release build (iOS)"
+lane :react_native_release_ios do
+  run_npm("npm ci") if File.exist?(File.join(repo_root, "package-lock.json"))
+  run_npm("npx react-native build-ios --mode Release")
+end

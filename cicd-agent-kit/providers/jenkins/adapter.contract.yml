@@ -1,0 +1,71 @@
+# Jenkins provider adapter contract
+# Status: IMPLEMENTED for local generation/inspect/validate and API trigger/monitor when credentials exist.
+
+provider: jenkins
+status: implemented
+version: 1.0.0
+
+identity:
+  agent_capability_ids:
+    - inspect
+    - plan
+    - create-pipeline
+    - validate
+    - trigger-build
+
+scripts:
+  generate: scripts/generate_jenkins_pipeline.sh
+  inspect: scripts/inspect_jenkins_job.sh
+  trigger: scripts/trigger_jenkins_job.sh
+  monitor: scripts/monitor_jenkins_build.sh
+  validate: scripts/validate_jenkins.sh
+
+templates:
+  - providers/jenkins/templates/Jenkinsfile.mobile.template
+
+discovery:
+  markers:
+    - Jenkinsfile
+    - Jenkinsfile.*
+  report_fields:
+    - jenkinsfile_paths
+    - credential_id_references
+    - agent_labels
+    - parameters
+
+configuration_dimensions:
+  - app_platform
+  - environment
+  - build_configuration
+  - market_flavor_variant
+  - distribution_destination
+  - trigger
+  - signing_strategy
+  - agent_label_toolchain
+
+prerequisites:
+  required_for_remote_trigger:
+    - JENKINS_USER
+    - JENKINS_TOKEN
+    - job_url
+  required_for_generation:
+    - approved_scope_generate_pipeline
+  optional:
+    - shared_library_name_and_version
+    - credential_ids_and_binding_types
+    - multibranch_or_webhook_trigger
+
+limitations:
+  - Remote API inspect/trigger/monitor blocked without credentials (reported, not silently skipped as success).
+  - Shared library internals are not fetched without access.
+  - Credential ID presence does not prove authentication works.
+
+handoff_input_schema:
+  target:
+    provider: jenkins
+    job_url: string
+    branch_name: string_optional
+  workflow_inputs:
+    description: Mapped to Jenkins parameters as key=value
+  notification:
+    enabled: false

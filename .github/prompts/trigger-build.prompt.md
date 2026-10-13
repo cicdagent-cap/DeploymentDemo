@@ -1,100 +1,96 @@
-# Trigger Build Flow
+# Trigger / Monitor Build Flow
 
-## Step 1: Ask user
+Preserve this mode name for orchestrators: **Trigger Build**.
 
-Provide:
-1. Workflow URL (default options):
-   - https://github.com/gma-org/gmap-ios/actions/workflows/Core.yml
-   - https://github.com/gma-org/gmap-ios/actions/workflows/DE.yml
-   - Custom (input text field)
-2. Branch name (default options):
-   - staging-trunk
-   - Custom (input text field)
+Workflow dispatch, notifications, and continuous monitoring each require **explicit approval**. Do not treat a real workflow dispatch as a dry-run.
+
+## Step 1: Collect target
+
+Provide (no organization-specific defaults):
+
+1. Workflow URL (GitHub Actions), **or** Jenkins job identifier if/when Jenkins adapter is implemented
+2. Branch / ref name
+3. Whether to monitor until completion (optional; default no)
+4. Whether to send notifications (optional; default no)
+
+Optional request file: `requests/trigger-build-request.yml`
+
+If Jenkins is selected: stop and report that Jenkins triggering is **not implemented** in this kit version — see `docs/JENKINS.md`.
 
 ---
 
-## Step 2: Inspect workflow
+## Step 2: Inspect workflow inputs
 
-Run:
-
+```bash
 ./scripts/inspect_workflow_inputs.sh <workflow-url> <branch>
+```
 
 ---
 
-## Step 3: Ask inputs dynamically
+## Step 3: Collect inputs dynamically
 
-Show only discovered inputs
-
-Example:
-
-Provide:
-
-1. preset:
-   - Debug-CICD
-   - Release-CICD
-
-2. config_Override:
-   - None
-   - a: Feature A Enabled
-
-3. Release_Notes (optional)
+Show only discovered inputs. Do not invent preset names.
 
 ---
 
-## Step 4: Trigger build
+## Step 4: Trigger (GitHub Actions)
 
-Before triggering, check local environment setup through the trigger script output.
+Requires approved scope action `workflow_dispatch` (kit fail-closed via `harness/require_approval.sh` unless `CICD_ALLOW_UNSCOPED_DISPATCH=1`).
 
-Show this when configured:
-
-Environment: Configured via local file or GitHub
-
-Show this when missing:
-
-Missing env setup
-Run: cp .env.example .notification.local.env
-
-Run:
-
+```bash
+export CICD_APPROVED_SCOPE_FILE=/path/to/approved-scope.yml
 ./scripts/trigger_existing_workflow.sh \
-<workflow-url> \
-<branch> \
-preset=<value> \
-config_Override=<value> \
-Release_Notes="<value>"
+  <workflow-url> \
+  <branch> \
+  preset=<value> \
+  key=value...
+./scripts/monitor_run.sh <run-url-or-id> [owner/repo]
+```
+
+Jenkins:
+
+```bash
+./scripts/trigger_jenkins_job.sh <job-url> PRESET=Debug-CICD --scope-file "$CICD_APPROVED_SCOPE_FILE"
+./scripts/monitor_jenkins_build.sh <queue-or-build-url>
+```
+
+The script correlates the created run via GitHub CLI/API when available, with a polling fallback. Duplicate detection considers recent runs for the same workflow, ref, and overlapping inputs when possible.
+
+Missing local notification env must **not** block dispatch.
 
 ---
 
-## Step 5: Output
+## Step 5: Monitor (optional)
 
-Build triggered successfully
+Only if approved:
 
-Run URL: <github-run-url>
+```bash
+gh run watch <run-id> --repo <owner/repo>
+# or
+gh run view <run-id> --repo <owner/repo>
+```
+
+Report terminal status separately from dispatch success.
 
 ---
 
-## Notifications
+## Step 6: Notifications (optional)
 
-IF TEAM_WEBHOOK_URL exists in `.notification.local.env`, local shell env, or GitHub Secrets:
-→ Notify team when build is triggered, then monitor build status in background and notify again on completion with:
-  - Status (success, failure, cancelled, etc.)
-  - Build run URL
+Only if approved and `TEAM_WEBHOOK_URL` (or configured provider webhook) is available:
 
-The background monitor will automatically send team notifications for:
-- Build success
-- Build failure
-- Build cancelled
-- Any other terminal state
+- Workflow-level `scripts/notify.sh` may already notify from CI (non-blocking).
+- Local notify after trigger is optional and must not be required for a successful trigger.
 
-ELSE:
-Show:
+If webhook missing: report notifications disabled — not a trigger failure.
 
-Missing env setup
+---
 
-To enable:
-cp .env.example .notification.local.env
+## Output
 
-Then fill:
-
-TEAM_WEBHOOK_URL=<webhook-url>
-CICD_CHAT_PROVIDER=teams
+```yaml
+status: triggered | skipped | failed
+run_url: <url-or-null>
+correlation: api_run_details | poll_fallback | unavailable
+notifications: disabled | skipped_unapproved | sent
+monitor: not_requested | completed:<status> | not_approved
+```

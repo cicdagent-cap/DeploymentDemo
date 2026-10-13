@@ -1,0 +1,11 @@
+platform :ios do
+  lane :build do
+    UI.message("fixture build")
+  end
+  lane :test do
+    UI.message("fixture test")
+  end
+  lane :release do
+    UI.message("fixture release")
+  end
+end

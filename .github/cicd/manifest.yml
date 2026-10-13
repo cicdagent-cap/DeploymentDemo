@@ -1,0 +1,35 @@
+name: cicd-agent-kit
+version: 1.2.0
+description: Portable multi-platform CI/CD agent with harness, GHA+Jenkins providers, evals
+
+supported_platforms: [ios, android, flutter, react-native]
+
+providers:
+  github_actions: { status: implemented }
+  jenkins: { status: implemented, remote: credentials_required }
+
+agent_modes:
+  - { id: inspect, prompt: prompts/inspect.prompt.md, script: scripts/inspect_repo.sh }
+  - { id: plan, prompt: prompts/plan.prompt.md, scripts: [scripts/propose_changes.sh, scripts/recommend_pipeline_action.sh] }
+  - { id: create-pipeline, prompt: prompts/create-pipeline.prompt.md, scripts: [scripts/generate_pipeline.sh, scripts/generate_jenkins_pipeline.sh] }
+  - { id: validate, prompt: prompts/validate.prompt.md, scripts: [scripts/validate_kit.sh, scripts/validate_request.sh, scripts/validate_configuration.sh, scripts/validate_jenkins.sh] }
+  - { id: trigger-build, prompt: prompts/trigger-build.prompt.md, scripts: [scripts/trigger_existing_workflow.sh, scripts/trigger_jenkins_job.sh, scripts/monitor_run.sh, scripts/monitor_jenkins_build.sh] }
+
+harness:
+  loop: harness/run_loop.sh
+  approval: harness/require_approval.sh
+  trace: harness/trace.sh
+  checkpoint: harness/checkpoint.sh
+  tools_registry: tools/registry.yml
+
+evals: evals/run_evals.sh
+capability_tracker: docs/CAPABILITY_TRACKER.md
+enforcement: docs/ENFORCEMENT.md
+
+migration:
+  from: 1.1.0
+  to: 1.2.0
+  notes:
+    - Jenkins moved from contract_only to implemented (remote API still credential-gated).
+    - Harness approval fail-closed for mutate/dispatch tools.
+    - Selective sync via sync_kit_diff.sh (no blanket force).

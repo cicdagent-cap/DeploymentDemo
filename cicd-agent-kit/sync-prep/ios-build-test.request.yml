@@ -1,0 +1,24 @@
+# Proposed first CI run request — build+test only, no distribution/notifications.
+pipeline:
+  name: iOS_Build_Test
+  output_file: .github/workflows/ios-build-test.yml
+  reuse_existing_if_suitable: false
+provider: github_actions
+platform:
+  detection: ios
+environment: development
+build_configuration: Debug
+destination: artifacts-only
+runner_label: mac-m4-xc26.2-eu
+signing:
+  strategy: none
+capabilities:
+  - build
+  - unit_tests
+  - artifacts
+notifications:
+  enabled: false
+github_actions:
+  runner_label: mac-m4-xc26.2-eu
+  default_branch: main
+  template: mobile-ci

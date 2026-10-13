@@ -1,3 +1,6 @@
+# DEPRECATED: Use mobile-ci-workflow.template.yml for new pipelines.
+# Kept for backward compatibility with existing iOS-only workflows.
+
 name: __PIPELINE_NAME__
 
 on:
@@ -25,7 +28,9 @@ concurrency:
 
 jobs:
   notify-triggered:
+    if: ${{ vars.CICD_NOTIFICATIONS_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+    continue-on-error: true
     env:
       CICD_CHAT_PROVIDER: ${{ vars.CICD_CHAT_PROVIDER }}
       TEAM_WEBHOOK_URL: ${{ secrets.TEAM_WEBHOOK_URL }}
@@ -39,7 +44,6 @@ jobs:
           ./scripts/notify.sh triggered "$RUN_URL" "${{ github.ref_name }}"
 
   ios:
-    needs: notify-triggered
     runs-on: __RUNNER_LABEL__
 
     env:
@@ -110,7 +114,8 @@ jobs:
   notify-completed:
     runs-on: ubuntu-latest
     needs: ios
-    if: always()
+    if: ${{ always() && vars.CICD_NOTIFICATIONS_ENABLED == 'true' }}
+    continue-on-error: true
     env:
       CICD_CHAT_PROVIDER: ${{ vars.CICD_CHAT_PROVIDER }}
       TEAM_WEBHOOK_URL: ${{ secrets.TEAM_WEBHOOK_URL }}

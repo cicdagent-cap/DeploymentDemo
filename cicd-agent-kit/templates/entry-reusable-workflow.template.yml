@@ -1,0 +1,47 @@
+# Thin entry workflow → calls a reusable workflow.
+# Replace __REUSABLE_WORKFLOW_REF__ with an accessible owner/repo/path@ref.
+# Do not invent contents of inaccessible reusable workflows.
+
+name: __PIPELINE_NAME__
+
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: Configuration preset (not necessarily a production destination)
+        type: choice
+        required: true
+        default: Debug-CICD
+        options:
+          - Debug-CICD
+          - Release-CICD
+      config_override:
+        description: Optional config override key from config-overrides JSON
+        type: string
+        required: false
+        default: None
+      release_notes:
+        description: Release notes
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cicd-entry-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: __PIPELINE_NAME__
+    uses: __REUSABLE_WORKFLOW_REF__
+    with:
+      preset: ${{ inputs.preset }}
+      config_override: ${{ inputs.config_override }}
+      release_notes: ${{ inputs.release_notes }}
+      runner_label: __RUNNER_LABEL__
+      project_file: __DEFAULT_PROJECT_FILE__
+      scheme: __DEFAULT_SCHEME__
+    secrets: inherit

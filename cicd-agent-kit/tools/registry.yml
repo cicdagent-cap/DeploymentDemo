@@ -1,0 +1,184 @@
+# Structured tool registry for the CI/CD agent.
+# side_effects: none | filesystem | remote | notification
+# approval_required: true means harness/lib/require_approval.sh must pass for that action class.
+
+version: 1
+tools:
+  - id: inspect_repo
+    script: scripts/inspect_repo.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 180
+    permissions: [read_repo, local_xcodebuild_list]
+    inputs: { repo: path, format: human|json }
+    outputs: { report: object }
+    errors: { 1: inspect_failed }
+
+  - id: detect_platform
+    script: scripts/detect_project_platform.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 60
+    permissions: [read_repo]
+    inputs: { repo: path, format: human|env|github|json }
+    outputs: { detection: object }
+
+  - id: validate_request
+    script: scripts/validate_request.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 60
+    permissions: [read_repo]
+    inputs: { request: path, catalog: path }
+    outputs: { status: pass|fail, errors: list, normalized: object }
+
+  - id: recommend_pipeline_action
+    script: scripts/recommend_pipeline_action.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 90
+    permissions: [read_repo]
+    inputs: { repo: path, request: path }
+    outputs: { action: reuse|extend|create, evidence: list, blockers: list }
+
+  - id: propose_changes
+    script: scripts/propose_changes.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 120
+    permissions: [read_repo]
+    inputs: { repo: path, request: path }
+    outputs: { proposal_path: path, files: list }
+
+  - id: apply_approved_patch
+    script: scripts/apply_approved_patch.sh
+    side_effects: filesystem
+    approval_required: true
+    approval_actions: [apply_patch]
+    timeout_seconds: 120
+    permissions: [write_repo]
+    inputs: { proposal: path, scope_file: path }
+    outputs: { applied: list, skipped: list }
+    errors: { 2: approval_denied, 3: stale_proposal }
+
+  - id: generate_pipeline
+    script: scripts/generate_pipeline.sh
+    side_effects: filesystem
+    approval_required: true
+    approval_actions: [generate_pipeline]
+    timeout_seconds: 120
+    permissions: [write_repo]
+    inputs: { repo: path, request: path, scope_file: path, dry_run: bool }
+    outputs: { workflow_path: path, provider: string }
+
+  - id: validate_kit
+    script: scripts/validate_kit.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 180
+    permissions: [read_repo]
+
+  - id: validate_configuration
+    script: scripts/validate_configuration.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 60
+    permissions: [read_repo]
+
+  - id: verify_fastlane_lanes
+    script: scripts/verify_fastlane_lanes.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 180
+    permissions: [read_repo, ruby_optional]
+
+  - id: inspect_workflow_inputs
+    script: scripts/inspect_workflow_inputs.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 60
+    permissions: [network_github_readonly]
+
+  - id: trigger_github_workflow
+    script: scripts/trigger_existing_workflow.sh
+    side_effects: remote
+    approval_required: true
+    approval_actions: [workflow_dispatch]
+    timeout_seconds: 180
+    permissions: [network_github_write]
+    errors: { 2: approval_denied }
+
+  - id: monitor_github_run
+    script: scripts/monitor_run.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 7200
+    permissions: [network_github_readonly]
+
+  - id: inspect_jenkins_job
+    script: scripts/inspect_jenkins_job.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 120
+    permissions: [read_repo, network_jenkins_readonly_optional]
+
+  - id: generate_jenkins_pipeline
+    script: scripts/generate_jenkins_pipeline.sh
+    side_effects: filesystem
+    approval_required: true
+    approval_actions: [generate_pipeline]
+    timeout_seconds: 120
+    permissions: [write_repo]
+
+  - id: trigger_jenkins_job
+    script: scripts/trigger_jenkins_job.sh
+    side_effects: remote
+    approval_required: true
+    approval_actions: [jenkins_dispatch]
+    timeout_seconds: 180
+    permissions: [network_jenkins_write]
+
+  - id: monitor_jenkins_build
+    script: scripts/monitor_jenkins_build.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 7200
+    permissions: [network_jenkins_readonly]
+
+  - id: validate_jenkins
+    script: scripts/validate_jenkins.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 60
+    permissions: [read_repo]
+
+  - id: sync_kit_diff
+    script: scripts/sync_kit_diff.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 60
+    permissions: [read_repo]
+    notes: Diff only by default. Apply requires apply_approved_patch + per-file approval list.
+
+  - id: notify
+    script: scripts/notify.sh
+    side_effects: notification
+    approval_required: true
+    approval_actions: [notification]
+    timeout_seconds: 30
+    permissions: [network_webhook]
+
+  - id: checkpoint_save
+    script: harness/checkpoint.sh
+    side_effects: filesystem
+    approval_required: false
+    timeout_seconds: 30
+    permissions: [write_kit_state]
+    notes: Never stores secret values.
+
+  - id: run_evals
+    script: evals/run_evals.sh
+    side_effects: none
+    approval_required: false
+    timeout_seconds: 600
+    permissions: [read_repo]

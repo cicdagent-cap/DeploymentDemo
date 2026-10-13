@@ -1,0 +1,12 @@
+name: CI
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        type: choice
+        options: [Debug-CICD, Release-CICD]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - run: echo ok

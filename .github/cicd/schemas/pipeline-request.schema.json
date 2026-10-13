@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cicd-agent-kit/schemas/pipeline-request.schema.json",
+  "title": "CI/CD Pipeline Request",
+  "type": "object",
+  "required": ["pipeline", "provider"],
+  "additionalProperties": true,
+  "properties": {
+    "pipeline": {
+      "type": "object",
+      "required": ["name", "output_file"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "output_file": { "type": "string", "minLength": 1 },
+        "reuse_existing_if_suitable": { "type": "boolean" }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "properties": {
+        "detection": { "type": "string", "enum": ["auto", "ios", "android", "flutter", "react-native"] },
+        "override": { "type": ["string", "null"] },
+        "build_target": { "type": ["string", "null"], "enum": ["android", "ios", null] }
+      }
+    },
+    "provider": { "type": "string", "enum": ["github_actions", "jenkins"] },
+    "environment": { "type": "string" },
+    "build_configuration": { "type": "string", "enum": ["Debug", "Release", "debug", "release"] },
+    "market": { "type": ["string", "null"] },
+    "variant": { "type": ["string", "null"] },
+    "destination": {
+      "type": "string",
+      "enum": [
+        "artifacts-only",
+        "testflight",
+        "firebase_app_distribution",
+        "google_play",
+        "none"
+      ]
+    },
+    "runner_label": { "type": ["string", "null"] },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "presets": { "type": "object" },
+    "config_override": { "type": "object" },
+    "notifications": { "type": "object" },
+    "github_actions": { "type": "object" },
+    "jenkins": { "type": "object" },
+    "signing": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["none", "automatic", "manual", "match"]
+        }
+      }
+    }
+  }
+}

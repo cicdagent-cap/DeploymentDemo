@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Approved execution scope",
+  "type": "object",
+  "required": ["scope_id", "repo_root", "actions", "expires_at", "issuer"],
+  "properties": {
+    "scope_id": { "type": "string" },
+    "issuer": {
+      "type": "string",
+      "enum": ["human", "host"],
+      "description": "Must be human or host. Agent-written scopes are rejected."
+    },
+    "repo_root": { "type": "string" },
+    "repo_head": { "type": ["string", "null"] },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "apply_patch",
+          "generate_pipeline",
+          "workflow_dispatch",
+          "jenkins_dispatch",
+          "notification",
+          "install_dependencies",
+          "local_build",
+          "local_test",
+          "upload_distribution",
+          "commit",
+          "push",
+          "remote_settings"
+        ]
+      }
+    },
+    "allowed_paths": { "type": "array", "items": { "type": "string" } },
+    "denied_paths": { "type": "array", "items": { "type": "string" } },
+    "environment": {
+      "type": ["string", "null"],
+      "description": "If set, request/dispatch environment must match."
+    },
+    "destination": {
+      "type": ["string", "null"],
+      "description": "If set, request/dispatch destination must match."
+    },
+    "workflow_ref": { "type": ["string", "null"] },
+    "max_tool_calls": { "type": "integer", "minimum": 1 },
+    "max_retries": { "type": "integer", "minimum": 0 },
+    "timeout_seconds": { "type": "integer", "minimum": 1 },
+    "expires_at": { "type": "string" },
+    "proposal_hash": { "type": ["string", "null"] },
+    "host_token": {
+      "type": ["string", "null"],
+      "description": "Must equal CICD_HOST_APPROVAL_TOKEN when that host env is set."
+    },
+    "notes": { "type": "string" }
+  }
+}

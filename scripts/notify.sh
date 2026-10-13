@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+KIT_ROOT="$("$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resolve_kit_home.sh")"
+# Local/CI notify: require approval unless running inside GHA with notifications already gated by workflow.
+if [[ "${GITHUB_ACTIONS:-}" != "true" ]]; then
+  if [[ -x "$KIT_ROOT/harness/require_approval.sh" ]]; then
+    "$KIT_ROOT/harness/require_approval.sh" --action notification \
+      --repo "${CICD_REPO_ROOT:-$(pwd)}" \
+      --scope-file "${CICD_APPROVED_SCOPE_FILE:-}" \
+      --environment "${CICD_DISPATCH_ENVIRONMENT:-}" \
+      --destination "${CICD_DISPATCH_DESTINATION:-}" || {
+        echo "Notification blocked: approved scope action 'notification' required for local notify."
+        exit 2
+      }
+  fi
+fi
+
 LOCAL_ENV_FILE="${CICD_LOCAL_ENV_FILE:-.notification.local.env}"
 ENV_SOURCE=""
 
@@ -12,6 +27,7 @@ fi
 
 if [ -n "${ENV_SOURCE}" ]; then
   set -a
+  # shellcheck disable=SC1090
   . "${ENV_SOURCE}"
   set +a
 fi
@@ -28,56 +44,61 @@ if [ -z "${STATUS}" ] || [ -z "${RUN_URL}" ]; then
 fi
 
 if [ -z "${TEAM_WEBHOOK_URL}" ]; then
-  echo "TEAM_WEBHOOK_URL/TEAMS_WEBHOOK_URL is not configured. Skipping team notification."
+  echo "TEAM_WEBHOOK_URL/TEAMS_WEBHOOK_URL is not configured. Skipping notification (optional)."
   exit 0
 fi
 
-# Format status for readable message
 case "${STATUS}" in
-  success)
-    READABLE_STATUS="✅ Build Successful"
-    ;;
-  failure)
-    READABLE_STATUS="❌ Build Failed"
-    ;;
-  cancelled)
-    READABLE_STATUS="⛔ Build Cancelled"
-    ;;
-  skipped)
-    READABLE_STATUS="⏭️ Build Skipped"
-    ;;
-  triggered)
-    READABLE_STATUS="🚀 Build Triggered"
-    ;;
-  *)
-    READABLE_STATUS="Build Status: ${STATUS}"
-    ;;
+  success) READABLE_STATUS="Build Successful" ;;
+  failure) READABLE_STATUS="Build Failed" ;;
+  cancelled) READABLE_STATUS="Build Cancelled" ;;
+  skipped) READABLE_STATUS="Build Skipped" ;;
+  triggered) READABLE_STATUS="Build Triggered" ;;
+  *) READABLE_STATUS="Build Status: ${STATUS}" ;;
 esac
 
-# Build message with branch if provided
-if [ -n "${BRANCH}" ]; then
-  MESSAGE="${READABLE_STATUS} | Branch: ${BRANCH} | Run: ${RUN_URL}"
-  TEXT_FIELD="Branch: ${BRANCH}\n\nRun URL: ${RUN_URL}"
-else
-  MESSAGE="${READABLE_STATUS}. Run: ${RUN_URL}"
-  TEXT_FIELD="Run URL: ${RUN_URL}"
-fi
-
-# Power Automate HTTP triggers expect plain JSON fields, not MessageCard.
 if [[ "${TEAM_WEBHOOK_URL}" == *"powerplatform.com"* ]] || [[ "${TEAM_WEBHOOK_URL}" == *"powerautomate"* ]]; then
   CHAT_PROVIDER="powerautomate"
 fi
 
-if [ "${CHAT_PROVIDER}" = "slack" ]; then
-  PAYLOAD=$(printf '{"text":"%s"}' "${MESSAGE}")
-elif [ "${CHAT_PROVIDER}" = "powerautomate" ]; then
-  PAYLOAD=$(printf '{"title":"%s","text":"%s","message":"%s","status":"%s","branch":"%s","runUrl":"%s"}' \
-    "${READABLE_STATUS}" "${TEXT_FIELD}" "${MESSAGE}" "${STATUS}" "${BRANCH}" "${RUN_URL}")
-elif [ "${CHAT_PROVIDER}" = "teams" ]; then
-  PAYLOAD=$(printf '{"@type":"MessageCard","@context":"https://schema.org/extensions","summary":"%s","title":"%s","text":"%s"}' "${READABLE_STATUS}" "${READABLE_STATUS}" "${TEXT_FIELD}")
-else
-  PAYLOAD=$(printf '{"text":"%s"}' "${MESSAGE}")
-fi
+PAYLOAD="$(STATUS="$STATUS" RUN_URL="$RUN_URL" BRANCH="$BRANCH" \
+  READABLE_STATUS="$READABLE_STATUS" CHAT_PROVIDER="$CHAT_PROVIDER" python3 - <<'PY'
+import json, os
+status = os.environ["STATUS"]
+run_url = os.environ["RUN_URL"]
+branch = os.environ.get("BRANCH", "")
+readable = os.environ["READABLE_STATUS"]
+provider = os.environ["CHAT_PROVIDER"]
+if branch:
+    message = f"{readable} | Branch: {branch} | Run: {run_url}"
+    text_field = f"Branch: {branch}\n\nRun URL: {run_url}"
+else:
+    message = f"{readable}. Run: {run_url}"
+    text_field = f"Run URL: {run_url}"
+if provider == "slack":
+    payload = {"text": message}
+elif provider == "powerautomate":
+    payload = {
+        "title": readable,
+        "text": text_field,
+        "message": message,
+        "status": status,
+        "branch": branch,
+        "runUrl": run_url,
+    }
+elif provider == "teams":
+    payload = {
+        "@type": "MessageCard",
+        "@context": "https://schema.org/extensions",
+        "summary": readable,
+        "title": readable,
+        "text": text_field,
+    }
+else:
+    payload = {"text": message}
+print(json.dumps(payload))
+PY
+)"
 
 curl --fail --silent --show-error \
   -H "Content-Type: application/json" \

@@ -1,0 +1,135 @@
+# Capability catalog — enable only user-approved features per project.
+# classification: required | recommended | optional | not_applicable
+# provider: github_actions | jenkins | any
+
+version: 1
+
+core_ci:
+  - id: dependency_restoration
+    classification: required
+    provider: any
+  - id: build
+    classification: required
+    provider: any
+  - id: unit_tests
+    classification: recommended
+    provider: any
+  - id: ui_device_tests
+    classification: optional
+    provider: any
+  - id: lint_static_analysis
+    classification: optional
+    provider: any
+  - id: coverage_reports
+    classification: optional
+    provider: any
+  - id: artifacts
+    classification: recommended
+    provider: any
+  - id: caching
+    classification: recommended
+    provider: any
+  - id: timeouts_concurrency
+    classification: recommended
+    provider: any
+    notes: Configure CI cancellation separately from release concurrency.
+
+signing_distribution:
+  - id: ios_archive_ipa
+    classification: optional
+    provider: any
+    platforms: [ios]
+  - id: testflight
+    classification: optional
+    provider: any
+    platforms: [ios]
+    notes: Requires App Store Connect app record and upload authentication. Upload acceptance is not tester availability.
+  - id: firebase_app_distribution
+    classification: optional
+    provider: any
+    notes: Prefer service account / ADC. CLI token is compatibility-only.
+  - id: android_apk_aab
+    classification: optional
+    provider: any
+    platforms: [android]
+  - id: google_play_tracks
+    classification: optional
+    provider: any
+    platforms: [android]
+  - id: artifacts_only
+    classification: optional
+    provider: any
+    notes: Fallback when distribution credentials are missing.
+
+release_management:
+  - id: version_build_numbers
+    classification: optional
+    provider: any
+  - id: changelog_release_notes
+    classification: optional
+    provider: any
+  - id: branches_tags_promotion
+    classification: optional
+    provider: any
+  - id: automated_prs_merges
+    classification: optional
+    provider: github_actions
+  - id: approval_gates
+    classification: optional
+    provider: any
+
+configuration_patterns:
+  - id: presets_variants
+    classification: optional
+    provider: any
+    notes: Project-configurable; do not ship org-specific markets as defaults.
+  - id: config_overrides
+    classification: optional
+    provider: any
+  - id: thin_entry_reusable_workflow
+    classification: optional
+    provider: github_actions
+
+optional_integrations:
+  - id: notifications_teams_slack
+    classification: optional
+    provider: any
+    notes: Non-blocking; never required for build success.
+  - id: browserstack
+    classification: optional
+    provider: any
+  - id: danger
+    classification: optional
+    provider: any
+  - id: metrics
+    classification: optional
+    provider: any
+  - id: runner_monitoring
+    classification: optional
+    provider: any
+  - id: merge_queues
+    classification: optional
+    provider: github_actions
+
+providers:
+  github_actions:
+    status: implemented
+  jenkins:
+    status: implemented
+    contract: providers/jenkins/adapter.contract.yml
+    documentation: docs/JENKINS.md
+    notes: Remote trigger/monitor require Jenkins credentials; generation/local inspect work offline.
+
+phases:
+  - id: 1_inspection_configuration
+    capabilities: [dependency_restoration]
+  - id: 2_build_test_ci
+    capabilities: [build, unit_tests, artifacts, caching, timeouts_concurrency]
+  - id: 3_signing_artifacts
+    capabilities: [ios_archive_ipa, android_apk_aab, artifacts_only]
+  - id: 4_test_distribution
+    capabilities: [testflight, firebase_app_distribution, google_play_tracks]
+  - id: 5_release_automation
+    capabilities: [version_build_numbers, changelog_release_notes, branches_tags_promotion, automated_prs_merges, approval_gates, presets_variants]
+  - id: 6_optional_integrations
+    capabilities: [notifications_teams_slack, browserstack, danger, metrics, runner_monitoring, merge_queues]
