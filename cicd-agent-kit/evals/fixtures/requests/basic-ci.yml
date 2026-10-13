@@ -1,0 +1,18 @@
+pipeline:
+  name: Fixture_CI
+  output_file: .github/workflows/fixture-ci.yml
+  reuse_existing_if_suitable: true
+provider: github_actions
+platform:
+  detection: auto
+destination: artifacts-only
+build_configuration: Debug
+capabilities:
+  - build
+  - unit_tests
+  - artifacts
+notifications:
+  enabled: false
+github_actions:
+  runner_label: macos-latest
+  default_branch: main

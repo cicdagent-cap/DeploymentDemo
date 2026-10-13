@@ -1,0 +1,15 @@
+{
+  "_comment": "Project-configurable variants (environment/API/signing hints). Replace keys and values per project. No organization-specific markets shipped as defaults.",
+  "DEV": {
+    "environment": "development",
+    "notes": "Local/dev API configuration placeholders only"
+  },
+  "STAGING": {
+    "environment": "staging",
+    "notes": "Staging API configuration placeholders only"
+  },
+  "PRODUCTION": {
+    "environment": "production",
+    "notes": "Production requires explicit approval gates and destination configuration"
+  }
+}

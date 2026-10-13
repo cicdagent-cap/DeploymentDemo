@@ -1,0 +1,10 @@
+pipeline:
+  name: Bad_TF
+  output_file: .github/workflows/bad-tf.yml
+provider: github_actions
+destination: testflight
+build_configuration: Debug
+signing:
+  strategy: none
+capabilities:
+  - build

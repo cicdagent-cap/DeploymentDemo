@@ -1,25 +1,21 @@
 # Fill this file when asking the CICD agent to trigger an existing workflow.
 # Do not store real webhook URLs, tokens, or secret values in this file.
+# Workflow dispatch is a real run — not a dry-run. Requires explicit approval.
+
+provider: github_actions  # jenkins trigger is not implemented — see docs/JENKINS.md
 
 target:
-  # Default options:
-  # 1) https://github.com/gma-org/gmap-ios/actions/workflows/Core.yml
-  # 2) https://github.com/gma-org/gmap-ios/actions/workflows/DE.yml
-  # 3) Custom (replace with your input)
-  workflow_url: https://github.com/cicdagent-cap/DeploymentDemo/actions/workflows/demo-pipeline.yml
-
-  # Default options:
-  # 1) main
-  # 2) Custom (replace with your input)
-  branch_name: main
+  workflow_url: ""  # https://github.com/<owner>/<repo>/actions/workflows/<file>.yml
+  branch_name: ""   # detect or ask; no organization-specific default
 
 workflow_inputs:
   preset: Debug-CICD
-  config_Override: None
-  Release_Notes: Demo build from CICD agent
+  # Add only inputs discovered via inspect_workflow_inputs.sh
+
+monitor:
+  enabled: false  # requires separate approval
 
 notification:
-  # Local runs read real values from .notification.local.env.
-  # GitHub Actions reads real values from repository Secrets/Variables.
+  enabled: false  # optional; missing webhook must not fail trigger
   provider: teams
   webhook_secret_or_env_name: TEAM_WEBHOOK_URL

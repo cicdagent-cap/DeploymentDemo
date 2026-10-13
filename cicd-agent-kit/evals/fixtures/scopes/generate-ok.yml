@@ -1,0 +1,19 @@
+scope_id: eval-generate-1
+issuer: human
+repo_root: __REPO__
+actions:
+  - generate_pipeline
+  - apply_patch
+allowed_paths:
+  - .github/workflows/
+  - Jenkinsfile
+denied_paths: []
+environment: null
+destination: artifacts-only
+max_tool_calls: 20
+max_retries: 1
+timeout_seconds: 600
+expires_at: "2099-01-01T00:00:00Z"
+proposal_hash: null
+host_token: null
+notes: eval fixture scope — outside sample repo tree

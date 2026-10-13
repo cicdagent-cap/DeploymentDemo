@@ -1,0 +1,80 @@
+# Canonical kit → target install/sync map. sync_kit_diff.sh and install.sh must stay aligned.
+version: 1
+mappings:
+  - { src: agent/CICD.agent.md, dst: .github/agents/CICD.agent.md }
+  - { src: prompts/create-pipeline.prompt.md, dst: .github/prompts/create-pipeline.prompt.md }
+  - { src: prompts/trigger-build.prompt.md, dst: .github/prompts/trigger-build.prompt.md }
+  - { src: prompts/inspect.prompt.md, dst: .github/prompts/inspect.prompt.md }
+  - { src: prompts/plan.prompt.md, dst: .github/prompts/plan.prompt.md }
+  - { src: prompts/validate.prompt.md, dst: .github/prompts/validate.prompt.md }
+  - { src: capabilities/catalog.yml, dst: .github/cicd/capabilities/catalog.yml }
+  - { src: tools/registry.yml, dst: .github/cicd/tools/registry.yml }
+  - { src: schemas/pipeline-request.schema.json, dst: .github/cicd/schemas/pipeline-request.schema.json }
+  - { src: schemas/approved-scope.schema.json, dst: .github/cicd/schemas/approved-scope.schema.json }
+  - { src: memory/project-memory.schema.json, dst: .github/cicd/memory/project-memory.schema.json }
+  - { src: docs/ENFORCEMENT.md, dst: .github/cicd/docs/ENFORCEMENT.md }
+  - { src: docs/CAPABILITY_TRACKER.md, dst: .github/cicd/docs/CAPABILITY_TRACKER.md }
+  - { src: docs/JENKINS.md, dst: CICD_JENKINS.md }
+  - { src: docs/HOT_RUN_SETUP.md, dst: CICD_HOT_RUN_SETUP.md }
+  - { src: docs/AGENT_HANDOFF.md, dst: .github/cicd/docs/AGENT_HANDOFF.md }
+  - { src: INTEGRATION.md, dst: CICD_INTEGRATION.md }
+  - { src: manifest.yml, dst: .github/cicd/manifest.yml }
+  - { src: config/cicd.config.yml, dst: .github/cicd.config.yml }
+  - { src: config/cicd.env.config.yml, dst: .github/cicd.env.config.yml }
+  - { src: config/env.example, dst: .env.example }
+  - { src: config/sync-map.yml, dst: .github/cicd/config/sync-map.yml }
+  - { src: requests/pipeline-request.yml, dst: .github/pipeline-request.yml }
+  - { src: requests/trigger-build-request.yml, dst: .github/trigger-build-request.yml }
+  - { src: config-overrides/config_overrides.json, dst: .github/config-overrides/config_overrides.json }
+  - { src: templates/mobile-ci-workflow.template.yml, dst: .github/pipeline-templates/mobile-ci-workflow.template.yml }
+  - { src: templates/mobile-ci-build-test.template.yml, dst: .github/pipeline-templates/mobile-ci-build-test.template.yml }
+  - { src: templates/ios-fastlane-workflow.template.yml, dst: .github/pipeline-templates/ios-fastlane-workflow.template.yml }
+  - { src: templates/entry-reusable-workflow.template.yml, dst: .github/pipeline-templates/entry-reusable-workflow.template.yml }
+  - { src: templates/presets.example.json, dst: .github/pipeline-templates/presets.example.json }
+  - { src: templates/variants.example.json, dst: .github/pipeline-templates/variants.example.json }
+  - { src: providers/jenkins/adapter.contract.yml, dst: .github/cicd/providers/jenkins/adapter.contract.yml }
+  - { src: providers/jenkins/templates/Jenkinsfile.mobile.template, dst: .github/cicd/providers/jenkins/templates/Jenkinsfile.mobile.template }
+  - { src: ruby/Gemfile, dst: Gemfile, risk: high }
+  - { src: fastlane/Appfile, dst: fastlane/Appfile, risk: high, merge: required }
+  - { src: fastlane/Fastfile, dst: fastlane/Fastfile, risk: high, merge: required }
+  - { src: fastlane/Matchfile, dst: fastlane/Matchfile }
+  - { src: fastlane/Pluginfile, dst: fastlane/Pluginfile }
+
+harness_files:
+  - harness/require_approval.sh
+  - harness/run_loop.sh
+  - harness/trace.sh
+  - harness/checkpoint.sh
+  - harness/lib/common.sh
+
+# Scripts installed under target scripts/ — must resolve harness via relative path ../.github/cicd/harness OR scripts copy harness next to them.
+# Strategy: install harness to .github/cicd/harness and scripts that locate kit root via CICD_KIT_HOME or walk to .github/cicd.
+script_files:
+  - detect_project_platform.sh
+  - trigger_existing_workflow.sh
+  - inspect_workflow_inputs.sh
+  - notify.sh
+  - bootstrap_new_repo.sh
+  - bootstrap_new_ios_repo.sh
+  - inspect_repo.sh
+  - validate_kit.sh
+  - validate_request.sh
+  - validate_configuration.sh
+  - validate_installed_layout.sh
+  - recommend_pipeline_action.sh
+  - propose_changes.sh
+  - generate_pipeline.sh
+  - generate_jenkins_pipeline.sh
+  - apply_approved_patch.sh
+  - verify_fastlane_lanes.sh
+  - monitor_run.sh
+  - monitor_jenkins_build.sh
+  - sync_kit_diff.sh
+  - inspect_jenkins_job.sh
+  - trigger_jenkins_job.sh
+  - validate_jenkins.sh
+  - resolve_kit_home.sh
+  - lib_kit_paths.sh
+
+preserve_never_overwrite:
+  - .github/workflows/demo-pipeline.yml

@@ -1,5 +1,17 @@
 # Create Pipeline Flow
 
+## Step 0: Detect platform
+
+Run from repo root:
+
+```bash
+./scripts/detect_project_platform.sh
+```
+
+Use the detected platform to choose runner label and required variables. If detection fails, ask the user which platform they are targeting.
+
+---
+
 ## Step 1: Ask user
 
 Ask:
@@ -18,7 +30,7 @@ IF user gives full file path:
 IF user gives folder only:
 → Generate filename:
 
-<folder>/<pipeline-name>.yml
+`<folder>/<pipeline-name>.yml`
 
 Convert pipeline name:
 - lowercase
@@ -32,20 +44,23 @@ Demo Pipeline → demo-pipeline.yml
 ## Step 3: Generate YAML
 
 Use template:
-.github/pipeline-templates/ios-fastlane-workflow.template.yml
+`.github/pipeline-templates/mobile-ci-workflow.template.yml`
 
-Replace:
+Replace placeholders:
 
-__PIPELINE_NAME__ → user input
-__REUSABLE_WORKFLOW_REF__ → gma-org/gmad-gha-workflows/.github/workflows/ios.yaml@v1.3.0
-__MARKET__ → CICD_APP
-__CONFIG_OVERRIDE_PATH__ → .github/config-overrides/config_overrides.json
-__RUNNER_LABEL__ → macos-latest
+| Placeholder | Value |
+|-------------|-------|
+| `__PIPELINE_NAME__` | User input |
+| `__RUNNER_LABEL__` | `macos-latest` for iOS / Flutter-iOS / RN-iOS; use repo override if configured |
+| `__DEFAULT_PROJECT_FILE__` | From detection or `CICD_PROJECT_FILE` |
+| `__DEFAULT_SCHEME__` | From detection or `CICD_DEFAULT_SCHEME` |
 
 Defaults:
 - preset: Debug-CICD
-- config override: None
+- platform: auto-detect at runtime via `scripts/detect_project_platform.sh`
 - release notes: ''
+
+The generated workflow includes a `detect` job that auto-selects build steps for ios, android, flutter, or react-native.
 
 ---
 
@@ -54,26 +69,32 @@ Defaults:
 ✅ Pipeline created
 
 File path:
-<resolved_path>
+`<resolved_path>`
+
+Detected platform: `<platform from detect script>`
 
 Next steps:
 1. Commit & push file
-2. Open GitHub Actions
-3. Run pipeline
+2. Set GitHub Actions Variables / Secrets for detected platform (see `.github/cicd.config.yml`)
+3. Open GitHub Actions and run pipeline
 
 ---
 
-## Required Setup
+## Required setup (by platform)
 
-Variables:
-- CICD_PROJECT_FILE
-- CICD_DEFAULT_SCHEME
-- CICD_DEFAULT_CONFIGURATION
-- CICD_TEST_DESTINATION
-- CICD_CHAT_PROVIDER
+**All platforms:**
+- `CICD_CHAT_PROVIDER`
+- `TEAM_WEBHOOK_URL` (secret)
 
-Secrets:
-- APP_STORE_CONNECT_API_KEY
-- MATCH_PASSWORD
-- TEAM_WEBHOOK_URL
-``
+**iOS:**
+- `CICD_PROJECT_FILE`, `CICD_DEFAULT_SCHEME`, `CICD_DEFAULT_CONFIGURATION`, `CICD_TEST_DESTINATION`
+- `FASTLANE_BUNDLE_IDENTIFIER`, `MATCH_*`, `APP_STORE_CONNECT_API_KEY`
+
+**Android:**
+- `CICD_GRADLE_DIR`
+- `ANDROID_KEYSTORE_*` (release signing)
+
+**Flutter / React Native:**
+- `CICD_BUILD_TARGET` (`android` or `ios`)
+- `CICD_GRADLE_DIR` (Android target)
+- iOS target also needs iOS signing secrets

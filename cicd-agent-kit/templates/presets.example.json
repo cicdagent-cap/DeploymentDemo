@@ -1,0 +1,23 @@
+{
+  "_comment": "Project-configurable presets. Map a preset name to variant + destination. Do not treat Release-* as production by default.",
+  "Debug-CICD": {
+    "variant": "DEV",
+    "destination": "artifacts-only",
+    "build_configuration": "Debug"
+  },
+  "Release-CICD": {
+    "variant": "STAGING",
+    "destination": "artifacts-only",
+    "build_configuration": "Release"
+  },
+  "Release-CICD-TESTFLIGHT": {
+    "variant": "STAGING",
+    "destination": "testflight",
+    "build_configuration": "Release"
+  },
+  "Release-CICD-FIREBASE": {
+    "variant": "STAGING",
+    "destination": "firebase_app_distribution",
+    "build_configuration": "Release"
+  }
+}

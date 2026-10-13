@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project memory (no secrets)",
+  "type": "object",
+  "properties": {
+    "repo_root": { "type": "string" },
+    "repo_head": { "type": ["string", "null"] },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "summary": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } },
+          "ts": { "type": "string" }
+        }
+      }
+    },
+    "selected": {
+      "type": "object",
+      "properties": {
+        "platform": { "type": "string" },
+        "environment": { "type": "string" },
+        "destination": { "type": "string" },
+        "runner_label": { "type": "string" },
+        "capabilities": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "checkpoints": { "type": "array", "items": { "type": "string" } }
+  }
+}

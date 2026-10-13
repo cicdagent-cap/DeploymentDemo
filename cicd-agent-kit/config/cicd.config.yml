@@ -1,0 +1,101 @@
+repository:
+  default_branch: main
+
+local_environment:
+  example_file: .env.example
+  local_file: .notification.local.env
+  setup_command: cp .env.example .notification.local.env
+
+defaults:
+  preset: Debug-CICD
+  config_override: None
+  platform: auto
+  build_target: android
+  notifications_enabled: false
+
+platform_detection:
+  script: scripts/detect_project_platform.sh
+  inspect_script: scripts/inspect_repo.sh
+  validate_script: scripts/validate_kit.sh
+  supported:
+    - ios
+    - android
+    - flutter
+    - react-native
+  runners:
+    ios: macos-latest
+    android: ubuntu-latest
+    flutter_android: ubuntu-latest
+    flutter_ios: macos-latest
+    react_native_android: ubuntu-latest
+    react_native_ios: macos-latest
+  notes: Suggested runners are defaults. Discover or ask for project-specific labels; never silently replace an existing configured runner.
+
+github:
+  pipeline_template: templates/mobile-ci-workflow.template.yml
+  entry_reusable_template: templates/entry-reusable-workflow.template.yml
+  legacy_ios_template: templates/ios-fastlane-workflow.template.yml
+  presets_example: templates/presets.example.json
+  variants_example: templates/variants.example.json
+
+jenkins:
+  status: contract_only
+  contract: providers/jenkins/adapter.contract.yml
+  documentation: docs/JENKINS.md
+
+notifications:
+  webhook_env: TEAM_WEBHOOK_URL
+  provider_env: CICD_CHAT_PROVIDER
+  default_provider: teams
+  required: false
+  must_be_non_blocking: true
+
+firebase:
+  preferred_auth: service_account_adc
+  credentials_env: GOOGLE_APPLICATION_CREDENTIALS
+  compatibility_token_env: FIREBASE_CLI_TOKEN
+  compatibility_notes: Token auth is limited and may be deprecated by Firebase CLI; prefer ADC.
+
+required:
+  # Keys listed under common are recommended baseline variables, not hard blockers for unsigned CI.
+  common:
+    variables:
+      - CICD_PLATFORM
+    secrets: []
+    optional_secrets:
+      - TEAM_WEBHOOK_URL
+  ios:
+    variables:
+      - CICD_PROJECT_FILE
+      - CICD_DEFAULT_SCHEME
+      - CICD_DEFAULT_CONFIGURATION
+      - CICD_TEST_DESTINATION
+      - FASTLANE_BUNDLE_IDENTIFIER
+    secrets_for_signing_optional:
+      - FASTLANE_TEAM_ID
+      - FASTLANE_ITC_TEAM_ID
+      - MATCH_GIT_URL
+      - MATCH_PASSWORD
+      - MATCH_GIT_BASIC_AUTHORIZATION
+      - APP_STORE_CONNECT_API_KEY
+  android:
+    variables:
+      - CICD_GRADLE_DIR
+    secrets_for_release_optional:
+      - ANDROID_KEYSTORE_BASE64
+      - ANDROID_KEYSTORE_PASSWORD
+      - ANDROID_KEY_ALIAS
+      - ANDROID_KEY_PASSWORD
+  flutter:
+    variables:
+      - CICD_BUILD_TARGET
+      - CICD_GRADLE_DIR
+    secrets: []
+  react-native:
+    variables:
+      - CICD_BUILD_TARGET
+      - CICD_NODE_VERSION
+      - CICD_GRADLE_DIR
+    secrets: []
+
+capabilities_catalog: capabilities/catalog.yml

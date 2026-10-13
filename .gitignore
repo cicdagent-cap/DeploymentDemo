@@ -16,3 +16,6 @@ fastlane/test_output/
 # Ruby
 .bundle/
 vendor/bundle/
+
+.DS_Store
+cicd-agent-kit.zip
